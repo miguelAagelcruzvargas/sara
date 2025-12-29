@@ -31,23 +31,22 @@ except ImportError:
 
 from config import ConfigManager
 from voice import NeuralVoiceEngine
-from devops import DevOpsManager, SystemOps, BuildManager
-from network_guardian import obtener_guardian
-from network_guardian_commands import procesar_comando_guardian
-from monitor import SystemMonitor
-from pomodoro_manager import obtener_pomodoro
-from code_reviewer import obtener_reviewer
+from devops import DevOpsManager
+from system_monitor import SystemMonitor
 from system_control import SystemControl
 from health_monitor import HealthMonitor
 from study_assistant import obtener_study_assistant
 from game_controller import obtener_game_controller
-from sara_knowledge import SaraKnowledge
+from network_guardian import obtener_guardian, procesar_comando_guardian
+from pomodoro import obtener_pomodoro
+from code_reviewer import obtener_reviewer
 from user_profile import obtener_perfil
-from calendar_module import CalendarManager # NUEVO
+from calendar_manager import CalendarManager
 from conversation_memory import ConversationMemory
 from weather_api import obtener_weather
 from routines import obtener_rutinas  # NUEVO  # NUEVO
 from second_brain import SecondBrain # CEREBRO VECTORIAL (NUEVO)
+from intent_classifier import HybridIntentClassifier # NLU HÍBRIDO (NUEVO)
 from web_agent import SaraWebSurfer # AGENTE WEB (NUEVO)
 
 # Constantes de configuración
@@ -177,6 +176,15 @@ class SaraBrain:
         self.web_agent = SaraWebSurfer() # Agente Web (Playwright)
         self.cronos = CronosManager(self) # Referencia circular segura
         
+        # Inicializar Intent Classifier (NLU HÍBRIDO)
+        try:
+            # Pasamos self.consultar_ia como callback para Layer 3 (AI Fallback)
+            self.intent_classifier = HybridIntentClassifier(ia_callback=None)  # Se asignará después
+            logging.info("✅ HybridIntentClassifier inicializado")
+        except Exception as e:
+            logging.error(f"⚠️ Error inicializando IntentClassifier: {e}")
+            self.intent_classifier = None
+        
         # Inicializar Calendario (NUEVO)
         try:
             self.calendar = CalendarManager()
@@ -288,6 +296,10 @@ class SaraBrain:
             
         self.conectar_ias()
         self.dictation_mode = False
+        
+        # Asignar callback de IA al intent classifier (después de conectar_ias)
+        if self.intent_classifier:
+            self.intent_classifier.ia_callback = self.consultar_ia
 
     def conectar_ias(self):
         # Recargar configuración para obtener las API keys más recientes
@@ -619,6 +631,7 @@ Analiza la intención. Responde SOLO JSON válido:
                 logging.error(f"Error en health reminder loop: {e}")
                 time.sleep(60)
 
+
     def _es_similar(self, texto, keywords, umbral=0.8):
         """Devuelve True si alguna palabra del texto se parece a las keywords"""
         words = texto.split()
@@ -629,25 +642,142 @@ Analiza la intención. Responde SOLO JSON válido:
                 logging.debug(f"Fuzzy match: '{w}' -> '{matches[0]}'")
                 return True
         return False
+    
+    def _procesar_con_nlu(self, comando):
+        """
+        Procesa comandos usando el sistema híbrido de NLU (3 capas).
+        Retorna (respuesta, tipo) o None si no se pudo procesar.
+        """
+        if not self.intent_classifier:
+            return None
+        
+        # Clasificar intención
+        intent, params, source = self.intent_classifier.clasificar(comando)
+        logging.info(f"🎯 Intent: {intent} | Source: {source} | Params: {params}")
+        
+        # Ejecutar según intención
+        if intent == "MEMORIZAR":
+            if self.second_brain:
+                res = self.second_brain.memorizar(params.get("data", ""))
+                return f"✅ {res}", "sara"
+        
+        elif intent == "VOLUMEN_SUBIR":
+            if self.sys_control:
+                amount = params.get("amount", 10)
+                return self.sys_control.adjust_volume(amount), "sys"
+        
+        elif intent == "VOLUMEN_BAJAR":
+            if self.sys_control:
+                amount = params.get("amount", 10)
+                return self.sys_control.adjust_volume(-amount), "sys"
+        
+        elif intent == "SILENCIO":
+            if self.sys_control:
+                return self.sys_control.mute_volume(), "sys"
+        
+        elif intent == "ABRIR_APP":
+            app_name = params.get("app_name", "")
+            return self.abrir_inteligente(app_name, comando)
+        
+        elif intent == "BUSCAR_WEB":
+            if self.web_agent:
+                query = params.get("query", "")
+                res = self.web_agent.buscar_google(query)
+                if self.ia_online:
+                    resumen_ia, _ = self.consultar_ia(f"Resume esta investigación web:\\n{res}")
+                    return resumen_ia, "sara"
+                return f"🔎 Resultados:\\n{res}", "sara"
+        
+        elif intent == "LEER_DOCUMENTO":
+            if self.web_agent:
+                url = pyperclip.paste().strip()
+                if "http" in url:
+                    contenido = self.web_agent.leer_pagina(url)
+                    if self.ia_online:
+                        resumen_ia, _ = self.consultar_ia(f"Resume este contenido:\\n{contenido}")
+                        return resumen_ia, "sara"
+                    return f"📄 Contenido:\\n{contenido[:500]}...", "sara"
+                else:
+                    return "Copia la URL primero (Ctrl+C) y vuelve a preguntar.", "sara"
+        
+        elif intent == "REPRODUCIR_MEDIA":
+            query = params.get("query", "")
+            webbrowser.open(f"https://www.youtube.com/results?search_query={query}")
+            return f"🎵 Reproduciendo: {query}", "media"
+        
+        elif intent == "ALARMA":
+            if self.cronos:
+                minutes = params.get("minutes", 5)
+                message = params.get("message", "Alarma")
+                return self.cronos.programar_alarma(minutes, message), "sara"
+        
+        elif intent == "CLIMA":
+            if self.weather:
+                return self.weather.get_current_weather(), "weather"
+        
+        elif intent == "HORA_FECHA":
+            tipo = params.get("type", "hora")
+            if tipo == "hora":
+                return f"🕐 Son las {datetime.datetime.now().strftime('%H:%M')}", "sara"
+            else:
+                return f"📅 Hoy es {datetime.datetime.now().strftime('%d de %B de %Y')}", "sara"
+        
+        elif intent == "TRADUCIR":
+            text = params.get("text", "")
+            target_lang = params.get("target_lang", "en")
+            if self.ia_online:
+                prompt = f"Traduce al {'inglés' if target_lang == 'en' else 'español'}: {text}"
+                return self.consultar_ia(prompt)
+        
+        elif intent == "CALCULAR":
+            expr = params.get("expression", "")
+            try:
+                # Evaluar expresión matemática de forma segura
+                resultado = eval(expr, {"__builtins__": {}}, {})
+                return f"🔢 Resultado: {resultado}", "sara"
+            except:
+                return "No pude calcular eso. Intenta con una expresión más simple.", "sara"
+        
+        elif intent == "MODO_ZEN":
+            if self.sys_control:
+                self.sys_control.minimize_all_windows()
+                time.sleep(0.5)
+                webbrowser.open("https://www.youtube.com/watch?v=jfKfPfyJRdk")
+                return "🧘‍♂️ Modo Zen activado.", "sara"
+        
+        elif intent == "CONVERSACION":
+            # Delegar a IA
+            if self.ia_online:
+                return self.consultar_ia(params.get("text", comando))
+        
+        return None
+
+
 
     def procesar(self, comando):
         cmd = comando.lower()
         
-        # --- COMMANDOS DE MEMORIA (SECOND BRAIN) ---
+        # === PRIORIDAD 1: INTENTAR NLU HÍBRIDO ===
+        if self.intent_classifier:
+            resultado_nlu = self._procesar_con_nlu(comando)
+            if resultado_nlu:
+                # Guardar en memoria conversacional
+                if self.memory:
+                    self.memory.add_turn(comando, resultado_nlu[0])
+                return resultado_nlu
+        
+        # === PRIORIDAD 2: COMANDOS ESPECIALIZADOS (que no están en NLU) ===
+        
+        # --- COMMANDOS DE MEMORIA (SECOND BRAIN) - Lectura de documentos ---
         if self.second_brain:
-            # 1. Memorización explícita (más flexible)
-            if "memoriza" in cmd or "guarda esto" in cmd:
-                # Extraer el dato después de "memoriza esto/que" o "guarda esto"
-                dato = cmd
-                for trigger in ["memoriza esto", "memoriza que", "memoriza", "guarda esto"]:
-                    dato = dato.replace(trigger, "")
-                dato = dato.replace("sara", "").strip()
-                
-                if dato:
-                    res = self.second_brain.memorizar(dato)
-                    return f"✅ {res}", "sara"
+            if "lee este documento" in cmd or "lee este archivo" in cmd:
+                ruta = pyperclip.paste().replace('"', '')
+                if os.path.exists(ruta):
+                    res = self.second_brain.ingestar_archivo(ruta)
+                    return f"📄 {res}", "sara"
                 else:
-                    return "No escuché qué debo memorizar. Dime 'memoriza' seguido del dato.", "sara"
+                    return "Copia la ruta del archivo primero (Ctrl+C) y vuelve a decirme.", "sara"
+
             
             # 2. Lectura de documentos (Arrastrar y soltar mental o ruta)
             if "lee este documento" in cmd or "lee este archivo" in cmd:
