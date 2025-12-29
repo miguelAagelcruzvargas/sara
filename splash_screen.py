@@ -9,21 +9,24 @@ import tkinter as tk
 from tkinter import ttk
 import threading
 import time
+from pathlib import Path
 
 class SaraSplashScreen:
     """Splash screen con barra de progreso para inicialización de SARA."""
     
-    def __init__(self):
+    def __init__(self, is_first_time=False):
         self.root = tk.Tk()
         self.root.title("SARA - Inicializando")
-        self.root.geometry("500x300")
+        self.root.geometry("500x350" if is_first_time else "500x300")
         self.root.resizable(False, False)
         
         # Centrar ventana
         self.root.update_idletasks()
-        x = (self.root.winfo_screenwidth() // 2) - (500 // 2)
-        y = (self.root.winfo_screenheight() // 2) - (300 // 2)
-        self.root.geometry(f"500x300+{x}+{y}")
+        width = 500
+        height = 350 if is_first_time else 300
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
         
         # Sin bordes de ventana
         self.root.overrideredirect(True)
@@ -38,12 +41,12 @@ class SaraSplashScreen:
         # Logo/Título
         title = tk.Label(
             main_frame,
-            text="🤖 SARA 2.0",
+            text="🤖 S.A.R.A 2.0",
             font=('Segoe UI', 32, 'bold'),
             fg='#00d9ff',
             bg='#1a1a2e'
         )
-        title.pack(pady=(0, 10))
+        title.pack(pady=(0, 5))
         
         # Subtítulo
         subtitle = tk.Label(
@@ -53,7 +56,23 @@ class SaraSplashScreen:
             fg='#a0a0a0',
             bg='#1a1a2e'
         )
-        subtitle.pack(pady=(0, 30))
+        subtitle.pack(pady=(0, 10))
+        
+        # Mensaje de bienvenida (solo primera vez)
+        if is_first_time:
+            welcome_frame = tk.Frame(main_frame, bg='#2d2d44', relief='flat', bd=0)
+            welcome_frame.pack(pady=(0, 15), fill='x')
+            
+            welcome_msg = tk.Label(
+                welcome_frame,
+                text="✨ ¡Bienvenido! ✨\n\nSoy tu asistente personal inteligente.\nEstoy preparando todo para ti...",
+                font=('Segoe UI', 11),
+                fg='#ffffff',
+                bg='#2d2d44',
+                justify='center',
+                pady=15
+            )
+            welcome_msg.pack()
         
         # Label de estado
         self.status_label = tk.Label(
@@ -98,7 +117,7 @@ class SaraSplashScreen:
         # Versión
         version_label = tk.Label(
             main_frame,
-            text="v2.0 - NLU Híbrido",
+            text="v2.0 - NLU Híbrido + Second Brain",
             font=('Segoe UI', 8),
             fg='#505050',
             bg='#1a1a2e'
@@ -136,7 +155,12 @@ class SaraSplashScreen:
 # Función de utilidad para usar en brain.py
 def crear_splash():
     """Crea y retorna una instancia del splash screen."""
-    splash = SaraSplashScreen()
+    # Detectar si es primera vez (si no existe el cache de embeddings)
+    from pathlib import Path
+    cache_file = Path(__file__).parent / ".sara_models" / "intent_embeddings.pkl"
+    is_first_time = not cache_file.exists()
+    
+    splash = SaraSplashScreen(is_first_time=is_first_time)
     splash.show()
     return splash
 
