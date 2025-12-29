@@ -15,6 +15,9 @@ sara_memory.json
 credentials.json
 token.json
 
+# Modelos de ML y cache (NUEVO)
+.sara_models/
+
 # ============================================
 # PYTHON
 # ============================================

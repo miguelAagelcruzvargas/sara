@@ -16,6 +16,7 @@ import difflib
 import re
 import pickle
 import hashlib
+import os
 from pathlib import Path
 from typing import Tuple, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer, util
@@ -28,8 +29,9 @@ from intent_examples_full import INTENT_EXAMPLES_FULL
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Cache de embeddings
-CACHE_DIR = Path.home() / ".sara_cache"
+# Cache de embeddings (DENTRO DEL PROYECTO)
+PROJECT_DIR = Path(__file__).parent
+CACHE_DIR = PROJECT_DIR / ".sara_models"
 EMBEDDINGS_CACHE_FILE = CACHE_DIR / "intent_embeddings.pkl"
 
 
@@ -48,9 +50,15 @@ class HybridIntentClassifier:
         """
         self.ia_callback = ia_callback
         
+        # Crear directorio de modelos si no existe
+        CACHE_DIR.mkdir(exist_ok=True)
+        
+        # Configurar cache de Sentence-Transformers DENTRO del proyecto
+        os.environ['SENTENCE_TRANSFORMERS_HOME'] = str(CACHE_DIR)
+        
         # Cargar modelo de embeddings (Layer 2)
         logger.info("🧠 Cargando modelo Sentence-Transformers...")
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder=str(CACHE_DIR))
         
         # Cargar ejemplos de entrenamiento
         self.intent_examples = self._cargar_ejemplos()
@@ -59,6 +67,7 @@ class HybridIntentClassifier:
         self.intent_embeddings = self._generar_embeddings()
         
         logger.info(f"✅ Intent Classifier inicializado ({len(self.intent_examples)} intenciones)")
+        logger.info(f"📁 Modelos guardados en: {CACHE_DIR}")
     
     def _cargar_ejemplos(self) -> Dict[str, list]:
         """
