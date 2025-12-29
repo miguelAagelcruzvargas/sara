@@ -32,7 +32,7 @@ except ImportError:
 from config import ConfigManager
 from voice import NeuralVoiceEngine
 from devops import DevOpsManager
-from system_monitor import SystemMonitor
+from monitor import SystemMonitor
 from system_control import SystemControl
 from health_monitor import HealthMonitor
 from study_assistant import obtener_study_assistant
