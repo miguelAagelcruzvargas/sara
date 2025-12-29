@@ -126,29 +126,48 @@ class SaraUltraSplash:
             font=("Consolas", 10), fill=C['primary'], anchor="w", tags="ui"
         )
         
-        # 2. LOG DE CONSOLA (Estilo Hacker)
-        y_start = 160
-        # Mostrar últimas 6 líneas
-        current_logs = self.log_lines[-6:]
-        
-        for i, line in enumerate(current_logs): 
-            # Lógica de colores corregida:
-            # La última línea (i==5 si hay 6) es brillante
-            # Las anteriores se van apagando
-            is_last = (i == len(current_logs) - 1)
-            
-            if is_last:
-                color = C['text']
-            elif i > len(current_logs) - 3:
-                color = C['text_sub'] # Aquí usamos el color que faltaba
-            else:
-                color = '#444455'
-                
+        # MENSAJE DE BIENVENIDA (solo al 0%)
+        if self.loading_value == 0:
+            welcome_y = 160
             c.create_text(
-                45, y_start + (i*20),
-                text=f"> {line}",
-                font=("Consolas", 9), fill=color, anchor="w", tags="ui"
+                40, welcome_y, 
+                text="✨ ¡Bienvenido a tu asistente inteligente!",
+                font=("Segoe UI", 14, "bold"), fill=C['primary'], anchor="w", tags="ui"
             )
+            c.create_text(
+                40, welcome_y + 30,
+                text="Preparando todo para ti...",
+                font=("Segoe UI", 11), fill=C['text_sub'], anchor="w", tags="ui"
+            )
+            c.create_text(
+                40, welcome_y + 55,
+                text="Esto puede tardar unos segundos la primera vez.",
+                font=("Segoe UI", 9), fill=C['dim'], anchor="w", tags="ui"
+            )
+        else:
+            # 2. LOG DE CONSOLA (Estilo Hacker) - Solo cuando ya empezó a cargar
+            y_start = 160
+            # Mostrar últimas 6 líneas
+            current_logs = self.log_lines[-6:]
+            
+            for i, line in enumerate(current_logs): 
+                # Lógica de colores corregida:
+                # La última línea (i==5 si hay 6) es brillante
+                # Las anteriores se van apagando
+                is_last = (i == len(current_logs) - 1)
+                
+                if is_last:
+                    color = C['text']
+                elif i > len(current_logs) - 3:
+                    color = C['text_sub'] # Aquí usamos el color que faltaba
+                else:
+                    color = '#444455'
+                    
+                c.create_text(
+                    45, y_start + (i*20),
+                    text=f"> {line}",
+                    font=("Consolas", 9), fill=color, anchor="w", tags="ui"
+                )
 
         # 3. LOADER CIRCULAR (Arcos)
         # Fondo del anillo
