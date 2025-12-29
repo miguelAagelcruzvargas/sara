@@ -826,13 +826,19 @@ Analiza la intención. Responde SOLO JSON válido:
         cmd = comando.lower()
         
         # === PRIORIDAD 1: INTENTAR NLU HÍBRIDO ===
+        # === PRIORIDAD 1: INTENTAR NLU HÍBRIDO ===
         if self.intent_classifier:
+            print(f"DEBUG BRAIN: Calling NLU with '{comando}'")
             resultado_nlu = self._procesar_con_nlu(comando)
+            print(f"DEBUG BRAIN: NLU Result: {resultado_nlu}")
             if resultado_nlu:
                 # Guardar en memoria conversacional
                 if self.memory:
                     self.memory.add_turn(comando, resultado_nlu[0])
                 return resultado_nlu
+        else:
+            print("DEBUG BRAIN: NLU Classifier is NONE")
+            logging.warning("⚠️ NLU Classifier is NONE. Falling back to legacy logic.")
         
         # === PRIORIDAD 2: COMANDOS ESPECIALIZADOS (que no están en NLU) ===
         
@@ -2264,5 +2270,8 @@ Comando del usuario: "{comando}"
             logging.error(f"Error en AI Router: {e}")
             # Fallback a respuesta normal
             contexto = f"\n\nDirectorio actual de trabajo: {DevOpsManager.WORK_DIR}. Ayuda con comandos Git si se solicita."
-            return self.consultar_ia(comando, contexto)
+            try:
+                return self.consultar_ia(comando, contexto)
+            except:
+                return "Lo siento, no entendí eso. ¿Podrías repetirlo?", "error"
 
