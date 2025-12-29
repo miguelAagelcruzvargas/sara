@@ -208,19 +208,32 @@ class SaraBrain:
         self.devops = DevOpsManager()
         self.monitor = SystemMonitor() # Kept from original __init__
         self.memory = MemoryManager() # Cerebro a largo plazo (Clásico)
-        self.second_brain = SecondBrain() # Cerebro Vectorial (RAG)
-        self.web_agent = SaraWebSurfer() # Agente Web (Playwright)
         self.cronos = CronosManager(self) # Referencia circular segura
         
-        # Inicializar Intent Classifier (NLU HÍBRIDO)
+        # OPTIMIZACIÓN: Inicializar Intent Classifier PRIMERO (carga el modelo)
         try:
+            if splash_callback:
+                splash_callback(30, "Cargando NLU...", "Modelo all-MiniLM-L6-v2")
             # Pasamos self.consultar_ia como callback para Layer 3 (AI Fallback)
             # Y splash_callback para mostrar progreso
             self.intent_classifier = HybridIntentClassifier(ia_callback=None, splash_callback=splash_callback)
             logging.info("✅ HybridIntentClassifier inicializado")
         except Exception as e:
-            logging.error(f"⚠️ Error inicializando IntentClassifier: {e}")
+            logging.error(f"❌ Error inicializando HybridIntentClassifier: {e}")
             self.intent_classifier = None
+        
+        # OPTIMIZACIÓN: Pasar el modelo del NLU al Second Brain para reutilizarlo
+        if splash_callback:
+            splash_callback(60, "Inicializando Second Brain...", "Reutilizando modelo NLU")
+        
+        # Pasar el modelo del intent_classifier al second_brain si está disponible
+        shared_model = None
+        if self.intent_classifier and hasattr(self.intent_classifier, 'model'):
+            shared_model = self.intent_classifier.model
+            logging.info("🔄 Compartiendo modelo entre NLU y Second Brain")
+        
+        self.second_brain = SecondBrain(shared_model=shared_model) # Cerebro Vectorial (RAG)
+        self.web_agent = SaraWebSurfer() # Agente Web (Playwright)
         
         # Inicializar Calendario (NUEVO)
         try:
