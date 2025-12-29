@@ -10,11 +10,6 @@ import cv2
 import os
 
 
-from splash_screen import crear_splash
-from brain import SaraBrain
-from config import ConfigManager
-from devops import DevOpsManager
-
 # Configuración de Logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -29,19 +24,26 @@ class SaraUltimateGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # Crear splash screen
+        # Crear splash screen PRIMERO
+        from splash_screen import crear_splash
         splash = crear_splash()
-        splash.update_progress(10, "Inicializando SARA...", "Cargando configuración")
+        splash.update_progress(10, "Inicializando SARA...", "Cargando módulos...")
         
-        # Callback para actualizar splash desde brain
+        # Callback para actualizar splash
         def update_splash(value, status, detail=""):
             splash.update_progress(value, status, detail)
         
-        # Inicializar brain con callback de splash
-        splash.update_progress(20, "Cargando módulos...", "Brain, Voice, DevOps...")
+        # Importar brain (puede tardar)
+        splash.update_progress(20, "Importando módulos...", "Brain, Voice, DevOps...")
+        from brain import SaraBrain
+        from config import ConfigManager
+        from devops import DevOpsManager
+        
+        # Inicializar brain con callback
+        splash.update_progress(25, "Inicializando Brain...", "Esto puede tardar ~30s la primera vez")
         self.brain = SaraBrain(splash_callback=update_splash)
         
-        splash.update_progress(90, "Configurando interfaz...", "Preparando ventana principal")
+        splash.update_progress(85, "Configurando interfaz...", "Preparando ventana principal")
         
         self.is_listening = False
 
@@ -93,6 +95,7 @@ class SaraUltimateGUI(ctk.CTk):
         splash.close()
         
         self.log("SYS", f"✅ Sistema {VERSION} Inicializado.", "sys")
+        from devops import DevOpsManager
         self.log("SYS", f"📂 Dir: {DevOpsManager.WORK_DIR}", "dev")
         
         if not self.brain.ia_online:
