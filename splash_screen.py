@@ -17,13 +17,13 @@ class SaraSplashScreen:
     def __init__(self, is_first_time=False):
         self.root = tk.Tk()
         self.root.title("SARA - Inicializando")
-        self.root.geometry("500x350" if is_first_time else "500x300")
+        self.root.geometry("600x400" if is_first_time else "600x350")
         self.root.resizable(False, False)
         
         # Centrar ventana
         self.root.update_idletasks()
-        width = 500
-        height = 350 if is_first_time else 300
+        width = 600
+        height = 400 if is_first_time else 350
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
@@ -34,100 +34,105 @@ class SaraSplashScreen:
         # Siempre al frente (para que no se oculte)
         self.root.attributes('-topmost', True)
         
-        # Fondo oscuro
-        self.root.configure(bg='#1a1a2e')
+        # Fondo con gradiente simulado (oscuro elegante)
+        self.root.configure(bg='#0f0f23')
         
-        # Frame principal
-        main_frame = tk.Frame(self.root, bg='#1a1a2e')
-        main_frame.pack(expand=True, fill='both', padx=30, pady=30)
+        # Frame principal con borde redondeado simulado
+        main_frame = tk.Frame(self.root, bg='#0f0f23')
+        main_frame.pack(expand=True, fill='both', padx=0, pady=0)
         
-        # Logo/Título
+        # Frame interno con padding
+        content_frame = tk.Frame(main_frame, bg='#0f0f23')
+        content_frame.pack(expand=True, fill='both', padx=40, pady=40)
+        
+        # Logo/Título con mejor tipografía
         title = tk.Label(
-            main_frame,
-            text="🤖 S.A.R.A 2.0",
-            font=('Segoe UI', 32, 'bold'),
+            content_frame,
+            text="S.A.R.A",
+            font=('Segoe UI', 48, 'bold'),
             fg='#00d9ff',
-            bg='#1a1a2e'
+            bg='#0f0f23'
         )
         title.pack(pady=(0, 5))
         
-        # Subtítulo
+        # Subtítulo más elegante
         subtitle = tk.Label(
-            main_frame,
+            content_frame,
             text="Sistema Avanzado de Respuesta Automática",
-            font=('Segoe UI', 10),
-            fg='#a0a0a0',
-            bg='#1a1a2e'
+            font=('Segoe UI', 11),
+            fg='#7c8db5',
+            bg='#0f0f23'
         )
-        subtitle.pack(pady=(0, 10))
+        subtitle.pack(pady=(0, 20))
         
-        # Mensaje de bienvenida (solo primera vez)
+        # Mensaje de bienvenida (solo primera vez) - Más compacto
         if is_first_time:
-            welcome_frame = tk.Frame(main_frame, bg='#2d2d44', relief='flat', bd=0)
-            welcome_frame.pack(pady=(0, 15), fill='x')
+            welcome_frame = tk.Frame(content_frame, bg='#1a1f3a', relief='flat', bd=0)
+            welcome_frame.pack(pady=(0, 25), fill='x', ipady=20)
             
             welcome_msg = tk.Label(
                 welcome_frame,
-                text="✨ ¡Bienvenido! ✨\n\nSoy tu asistente personal inteligente.\nEstoy preparando todo para ti...",
-                font=('Segoe UI', 11),
+                text="✨ ¡Bienvenido a tu asistente inteligente!\n\nPreparando todo para ti...",
+                font=('Segoe UI', 12),
                 fg='#ffffff',
-                bg='#2d2d44',
-                justify='center',
-                pady=15
+                bg='#1a1f3a',
+                justify='center'
             )
             welcome_msg.pack()
         
-        # Label de estado
+        # Label de estado - Más prominente
         self.status_label = tk.Label(
-            main_frame,
+            content_frame,
             text="Iniciando...",
-            font=('Segoe UI', 11),
+            font=('Segoe UI', 13, 'bold'),
             fg='#ffffff',
-            bg='#1a1a2e'
+            bg='#0f0f23'
         )
         self.status_label.pack(pady=(0, 15))
         
-        # Barra de progreso
+        # Barra de progreso moderna
         style = ttk.Style()
         style.theme_use('clam')
         style.configure(
-            "Custom.Horizontal.TProgressbar",
-            troughcolor='#2d2d44',
+            "Modern.Horizontal.TProgressbar",
+            troughcolor='#1a1f3a',
             background='#00d9ff',
-            bordercolor='#1a1a2e',
+            bordercolor='#0f0f23',
             lightcolor='#00d9ff',
-            darkcolor='#00d9ff'
+            darkcolor='#00b8d4',
+            thickness=8
         )
         
         self.progress = ttk.Progressbar(
-            main_frame,
-            style="Custom.Horizontal.TProgressbar",
-            length=400,
+            content_frame,
+            style="Modern.Horizontal.TProgressbar",
+            length=500,
             mode='determinate'
         )
-        self.progress.pack(pady=(0, 10))
+        self.progress.pack(pady=(0, 12))
         
-        # Label de detalle
+        # Label de detalle - Más sutil
         self.detail_label = tk.Label(
-            main_frame,
+            content_frame,
             text="",
-            font=('Segoe UI', 9),
-            fg='#808080',
-            bg='#1a1a2e'
+            font=('Segoe UI', 10),
+            fg='#5a6b8c',
+            bg='#0f0f23'
         )
         self.detail_label.pack()
         
-        # Versión
+        # Versión - Más discreta
         version_label = tk.Label(
-            main_frame,
-            text="v2.0 - NLU Híbrido + Second Brain",
-            font=('Segoe UI', 8),
-            fg='#505050',
-            bg='#1a1a2e'
+            content_frame,
+            text="v2.0",
+            font=('Segoe UI', 9),
+            fg='#3a4b6c',
+            bg='#0f0f23'
         )
-        version_label.pack(side='bottom')
+        version_label.pack(side='bottom', pady=(20, 0))
         
         self.is_closed = False
+        self.auto_close_scheduled = False
     
     def update_progress(self, value, status, detail=""):
         """
@@ -143,6 +148,11 @@ class SaraSplashScreen:
             self.status_label.config(text=status)
             self.detail_label.config(text=detail)
             self.root.update()
+            
+            # Auto-cerrar cuando llegue al 100%
+            if value >= 100 and not self.auto_close_scheduled:
+                self.auto_close_scheduled = True
+                self.root.after(800, self.close)  # Cerrar después de 0.8 segundos
     
     def show(self):
         """Muestra el splash screen (no bloqueante)."""
