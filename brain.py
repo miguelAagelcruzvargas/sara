@@ -39,10 +39,10 @@ from study_assistant import obtener_study_assistant
 from game_controller import obtener_game_controller
 from network_guardian import obtener_guardian
 from network_guardian_commands import procesar_comando_guardian
-from pomodoro import obtener_pomodoro
+from pomodoro_manager import obtener_pomodoro
 from code_reviewer import obtener_reviewer
 from user_profile import obtener_perfil
-from calendar_manager import CalendarManager
+from calendar_module import CalendarManager
 from conversation_memory import ConversationMemory
 from weather_api import obtener_weather
 from routines import obtener_rutinas  # NUEVO  # NUEVO
