@@ -1,0 +1,18 @@
+# NetworkGuardian - Dependencias Adicionales
+# Agregar estas líneas al archivo requirements.txt existente
+
+# Para notificaciones de escritorio
+plyer>=2.1.0
+
+# Para análisis de red avanzado (opcional)
+# scapy>=2.5.0  # Descomentar si necesitas análisis de paquetes profundo
+
+# Para generación de reportes PDF (opcional - para futuras mejoras)
+# reportlab>=4.0.0  # Descomentar para exportar reportes a PDF
+
+# Para gráficos y visualizaciones (opcional - para dashboard)
+# matplotlib>=3.7.0  # Descomentar para gráficos de uso
+# plotly>=5.17.0  # Descomentar para dashboards interactivos
+
+# Para Wake-on-LAN (opcional)
+# wakeonlan>=3.0.0  # Descomentar para encender PCs remotamente

@@ -1,0 +1,114 @@
+# ============================================
+# ARCHIVOS SENSIBLES Y SEGURIDAD
+# ============================================
+
+# Variables de entorno (CRÍTICO - NO SUBIR)
+.env
+
+# Configuración con API keys
+sara_config.json
+
+# Base de datos de memoria
+sara_memory.json
+
+# Google OAuth (CRÍTICO - NO SUBIR)
+credentials.json
+token.json
+
+# ============================================
+# PYTHON
+# ============================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# ============================================
+# ENTORNOS VIRTUALES
+# ============================================
+
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# ============================================
+# IDEs Y EDITORES
+# ============================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ============================================
+# ARCHIVOS TEMPORALES
+# ============================================
+
+# TTS temporales
+tts_*.mp3
+
+# Logs
+*.log
+logs/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================
+# TESTING
+# ============================================
+
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# ============================================
+# OTROS
+# ============================================
+
+# Backups
+*.bak
+*.backup
+*~

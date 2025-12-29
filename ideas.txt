@@ -1,0 +1,29 @@
+Frecuencia y Canales (pygame.mixer.init):
+
+Cambio: De 22050Hz / 2 ch a 24000Hz / 1 ch.
+
+Por qué: Edge-TTS genera audio a 24kHz Mono. Si configuras Pygame a 22kHz estéreo, el sistema tiene que trabajar el doble: primero remuestrear (baja calidad) y luego duplicar el audio para el canal derecho (gasto de CPU). Esto reduce la latencia de inicio.
+
+Gestión de asyncio (asyncio.run):
+
+Cambio: Eliminada la gestión manual de new_event_loop().
+
+Por qué: En Python moderno, crear loops manualmente dentro de hilos y asignar políticas es propenso a errores (especialmente RuntimeError: There is no current event loop). asyncio.run() es atómico: crea un loop, corre la tarea y lo destruye limpiamente, siendo seguro para hilos.
+
+Bloqueo de Archivos en Windows (_safe_remove y unload):
+
+Cambio: Añadido pygame.mixer.music.unload() y mejorado el reintento en _safe_remove.
+
+Por qué: En Windows, si Pygame sigue "apuntando" al archivo MP3 aunque haya dejado de sonar, el sistema operativo prohíbe borrarlo. unload() libera ese puntero explícitamente.
+
+Buffer de Audio (buffer=1024):
+
+Cambio: Subido de 512 a 1024.
+
+Por qué: 512 es muy agresivo. Si tu CPU tiene un pico de uso (ej. abriendo una ventana), el audio sonará con chasquidos (crackling). 1024 sigue siendo baja latencia (unos 40ms) pero mucho más estable.
+
+Lógica del Productor (futures_map):
+
+Cambio: Usar un diccionario para mapear Futuros -> Archivos.
+
+Por qué: En tu código original iterabas sobre una lista de tuplas. La lógica nueva asegura que lanzamos todas las peticiones al ThreadPool al mismo tiempo (aprovechando los 3 workers al máximo) y luego recolectamos los resultados en orden secuencial.

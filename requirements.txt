@@ -1,0 +1,21 @@
+ python-dotenv
+customtkinter
+SpeechRecognition
+edge-tts
+pygame
+pyautogui
+pyperclip
+psutil
+google-generative-ai
+groq
+openai
+pyaudio
+pillow
+opencv-contrib-python
+deepface
+tf-keras
+chromadb
+sentence-transformers
+PyPDF2
+playwright
+google-auth-oauthlib
