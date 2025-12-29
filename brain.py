@@ -10,24 +10,56 @@ import re
 import pyperclip
 import json # Added json import for MemoryManager
 import threading # Added threading import for CronosManager
-try:
-    import pywhatkit
-except ImportError:
-    pywhatkit = None
-try:
-    import google.generativeai as genai
-except ImportError:
-    genai = None
 
-try:
-    from groq import Groq
-except ImportError:
-    Groq = None
+# LAZY IMPORTS - Se cargan solo cuando se necesitan para inicio rápido
+pywhatkit = None
+genai = None
+Groq = None
+OpenAI = None
 
-try:
-    from openai import OpenAI
-except ImportError:
-    OpenAI = None
+def _lazy_import_pywhatkit():
+    """Importa pywhatkit solo cuando se necesita"""
+    global pywhatkit
+    if pywhatkit is None:
+        try:
+            import pywhatkit as pk
+            pywhatkit = pk
+        except ImportError:
+            logging.warning("pywhatkit no disponible")
+    return pywhatkit
+
+def _lazy_import_genai():
+    """Importa google.generativeai solo cuando se necesita"""
+    global genai
+    if genai is None:
+        try:
+            import google.generativeai as g
+            genai = g
+        except ImportError:
+            logging.warning("google.generativeai no disponible")
+    return genai
+
+def _lazy_import_groq():
+    """Importa Groq solo cuando se necesita"""
+    global Groq
+    if Groq is None:
+        try:
+            from groq import Groq as G
+            Groq = G
+        except ImportError:
+            logging.warning("Groq no disponible")
+    return Groq
+
+def _lazy_import_openai():
+    """Importa OpenAI solo cuando se necesita"""
+    global OpenAI
+    if OpenAI is None:
+        try:
+            from openai import OpenAI as OAI
+            OpenAI = OAI
+        except ImportError:
+            logging.warning("OpenAI no disponible")
+    return OpenAI
 
 from config import ConfigManager
 from voice import NeuralVoiceEngine

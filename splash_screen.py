@@ -81,6 +81,22 @@ class SaraUltraSplash:
         # Crear borde brillante de ventana
         frame = tk.Frame(self.root, bg=C['primary'])
         frame.place(x=0, y=0, width=self.width, height=2) # Top border glow
+        
+        # Botón de minimizar (esquina superior derecha)
+        minimize_btn = tk.Label(
+            self.root,
+            text="─",
+            font=("Segoe UI", 16, "bold"),
+            fg=C['text'],
+            bg=C['bg'],
+            cursor="hand2"
+        )
+        minimize_btn.place(x=self.width-30, y=5, width=25, height=25)
+        minimize_btn.bind("<Button-1>", lambda e: self.root.iconify())
+        
+        # Hover effect para el botón
+        minimize_btn.bind("<Enter>", lambda e: minimize_btn.config(fg=C['primary']))
+        minimize_btn.bind("<Leave>", lambda e: minimize_btn.config(fg=C['text']))
 
     def _draw_neural_network(self):
         """Dibuja nodos y conexiones si están cerca"""
