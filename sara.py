@@ -10,6 +10,7 @@ import cv2
 import os
 
 
+from splash_screen import crear_splash
 from brain import SaraBrain
 from config import ConfigManager
 from devops import DevOpsManager
@@ -27,7 +28,21 @@ VOICE_SLEEP_WHILE_TALKING = 0.1
 class SaraUltimateGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.brain = SaraBrain()
+        
+        # Crear splash screen
+        splash = crear_splash()
+        splash.update_progress(10, "Inicializando SARA...", "Cargando configuración")
+        
+        # Callback para actualizar splash desde brain
+        def update_splash(value, status, detail=""):
+            splash.update_progress(value, status, detail)
+        
+        # Inicializar brain con callback de splash
+        splash.update_progress(20, "Cargando módulos...", "Brain, Voice, DevOps...")
+        self.brain = SaraBrain(splash_callback=update_splash)
+        
+        splash.update_progress(90, "Configurando interfaz...", "Preparando ventana principal")
+        
         self.is_listening = False
 
         # Configuración Ventana (COMPACTA)
@@ -71,6 +86,12 @@ class SaraUltimateGUI(ctk.CTk):
         self.setup_network_tab()
 
         self.actualizar_estado_global()
+        
+        # Cerrar splash
+        splash.update_progress(100, "¡Listo!", "SARA está lista para usar")
+        time.sleep(0.5)
+        splash.close()
+        
         self.log("SYS", f"✅ Sistema {VERSION} Inicializado.", "sys")
         self.log("SYS", f"📂 Dir: {DevOpsManager.WORK_DIR}", "dev")
         

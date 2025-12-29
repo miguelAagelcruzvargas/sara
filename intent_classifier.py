@@ -41,14 +41,16 @@ class HybridIntentClassifier:
     ML local y AI fallback para máxima robustez y velocidad.
     """
     
-    def __init__(self, ia_callback=None):
+    def __init__(self, ia_callback=None, splash_callback=None):
         """
         Inicializa el clasificador híbrido.
         
         Args:
             ia_callback: Función para consultar IA (opcional, para Layer 3)
+            splash_callback: Función para actualizar splash screen (opcional)
         """
         self.ia_callback = ia_callback
+        self.splash_callback = splash_callback
         
         # Crear directorio de modelos si no existe
         CACHE_DIR.mkdir(exist_ok=True)
@@ -57,14 +59,26 @@ class HybridIntentClassifier:
         os.environ['SENTENCE_TRANSFORMERS_HOME'] = str(CACHE_DIR)
         
         # Cargar modelo de embeddings (Layer 2)
+        if self.splash_callback:
+            self.splash_callback(30, "Cargando modelo NLU...", "Sentence-Transformers")
+        
         logger.info("🧠 Cargando modelo Sentence-Transformers...")
         self.model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder=str(CACHE_DIR))
         
         # Cargar ejemplos de entrenamiento
+        if self.splash_callback:
+            self.splash_callback(50, "Cargando ejemplos...", "1000+ variaciones de comandos")
+        
         self.intent_examples = self._cargar_ejemplos()
         
         # Generar embeddings de los ejemplos
+        if self.splash_callback:
+            self.splash_callback(60, "Generando embeddings...", "Esto puede tardar ~3s la primera vez")
+        
         self.intent_embeddings = self._generar_embeddings()
+        
+        if self.splash_callback:
+            self.splash_callback(80, "NLU listo", f"{len(self.intent_examples)} intenciones cargadas")
         
         logger.info(f"✅ Intent Classifier inicializado ({len(self.intent_examples)} intenciones)")
         logger.info(f"📁 Modelos guardados en: {CACHE_DIR}")

@@ -164,7 +164,10 @@ class CronosManager:
             time.sleep(5) # Revisar cada 5 segundos
 
 class SaraBrain:
-    def __init__(self):
+    def __init__(self, splash_callback=None):
+        if splash_callback:
+            splash_callback(25, "Cargando configuración...", "")
+        
         self.config = ConfigManager.cargar_config()
         self.ia_online = False
         self.clients = {}
@@ -180,7 +183,8 @@ class SaraBrain:
         # Inicializar Intent Classifier (NLU HÍBRIDO)
         try:
             # Pasamos self.consultar_ia como callback para Layer 3 (AI Fallback)
-            self.intent_classifier = HybridIntentClassifier(ia_callback=None)  # Se asignará después
+            # Y splash_callback para mostrar progreso
+            self.intent_classifier = HybridIntentClassifier(ia_callback=None, splash_callback=splash_callback)
             logging.info("✅ HybridIntentClassifier inicializado")
         except Exception as e:
             logging.error(f"⚠️ Error inicializando IntentClassifier: {e}")
