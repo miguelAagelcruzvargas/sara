@@ -125,13 +125,8 @@ class SaraUltimateGUI(ctk.CTk):
 
         self.actualizar_estado_global()
         
-        # Cerrar splash
-        splash.update_progress(100, "¡Listo!", "SARA está lista para usar")
-        time.sleep(0.5)
-        splash.close()
-        
-        self.log("SYS", f"✅ Sistema {VERSION} Inicializado.", "sys")
         from devops import DevOpsManager
+        self.log("SYS", f"✅ Sistema {VERSION} Inicializado.", "sys")
         self.log("SYS", f"📂 Dir: {DevOpsManager.WORK_DIR}", "dev")
         
         if not self.brain.ia_online:
@@ -141,6 +136,9 @@ class SaraUltimateGUI(ctk.CTk):
             saludo = self.brain.perfil.get_welcome_message() if self.brain.perfil else "👋 Hola! Soy SARA. ¿En qué trabajamos hoy?"
             self.log("SARA", saludo, "sara")
             self.brain.voz.hablar(saludo)
+        
+        # Mostrar ventana principal
+        self.deiconify()
     
     def _setup_colors(self):
         """Define la paleta de colores moderna"""
