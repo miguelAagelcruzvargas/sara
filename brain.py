@@ -37,7 +37,8 @@ from system_control import SystemControl
 from health_monitor import HealthMonitor
 from study_assistant import obtener_study_assistant
 from game_controller import obtener_game_controller
-from network_guardian import obtener_guardian, procesar_comando_guardian
+from network_guardian import obtener_guardian
+from network_guardian_commands import procesar_comando_guardian
 from pomodoro import obtener_pomodoro
 from code_reviewer import obtener_reviewer
 from user_profile import obtener_perfil
