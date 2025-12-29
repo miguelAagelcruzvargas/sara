@@ -20,14 +20,16 @@ VOICE_PHRASE_LIMIT = 15   # Aumentado de 10 a 15 para frases largas
 VOICE_AMBIENT_DURATION = 0.5 
 VOICE_SLEEP_WHILE_TALKING = 0.1 
 
+# Importar módulos necesarios globalmente
+from config import ConfigManager
+from devops import DevOpsManager
+
 class SaraUltimateGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
         # Importar brain directamente (como antes)
         from brain import SaraBrain
-        from config import ConfigManager
-        from devops import DevOpsManager
         
         # Inicializar brain
         self.brain = SaraBrain()
