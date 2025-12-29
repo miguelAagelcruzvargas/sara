@@ -24,33 +24,69 @@ class SaraUltimateGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # Crear splash screen PRIMERO
+        # Crear splash screen PRIMERO (en el hilo principal)
         from splash_screen import crear_splash
-        splash = crear_splash()
-        splash.update_progress(10, "Inicializando SARA...", "Cargando módulos...")
+        self.splash = crear_splash()
+        self.splash.update_progress(10, "Inicializando SARA...", "Preparando entorno...")
         
-        # Callback para actualizar splash
-        def update_splash(value, status, detail=""):
-            splash.update_progress(value, status, detail)
+        # Variables para sincronización
+        self.brain = None
+        self.brain_ready = False
         
-        # Importar brain (puede tardar)
-        splash.update_progress(20, "Importando módulos...", "Brain, Voice, DevOps...")
-        from brain import SaraBrain
-        from config import ConfigManager
-        from devops import DevOpsManager
+        # Inicializar brain en HILO SEPARADO para no bloquear el splash
+        def init_brain_thread():
+            try:
+                # Callback para actualizar splash desde el hilo
+                def update_splash(value, status, detail=""):
+                    if self.splash:
+                        self.splash.update_progress(value, status, detail)
+                
+                # Importar brain (puede tardar)
+                update_splash(20, "Importando módulos...", "Brain, Voice, DevOps...")
+                from brain import SaraBrain
+                from config import ConfigManager
+                from devops import DevOpsManager
+                
+                # Inicializar brain con callback
+                update_splash(25, "Inicializando Brain...", "Cargando NLU y modelos...")
+                self.brain = SaraBrain(splash_callback=update_splash)
+                
+                update_splash(85, "Configurando interfaz...", "Preparando ventana principal")
+                
+                # Marcar como listo
+                self.brain_ready = True
+                
+                # Cerrar splash y mostrar ventana principal (en el hilo principal)
+                self.after(100, self._finish_init)
+                
+            except Exception as e:
+                logging.error(f"Error inicializando brain: {e}")
+                if self.splash:
+                    self.splash.update_progress(100, "Error", str(e))
+                    self.after(2000, self.splash.close)
         
-        # Inicializar brain con callback
-        splash.update_progress(25, "Inicializando Brain...", "Esto puede tardar ~30s la primera vez")
-        self.brain = SaraBrain(splash_callback=update_splash)
+        # Iniciar thread de carga
+        threading.Thread(target=init_brain_thread, daemon=True).start()
         
-        splash.update_progress(85, "Configurando interfaz...", "Preparando ventana principal")
-        
+        # Configurar ventana básica (sin mostrarla aún)
         self.is_listening = False
-
-        # Configuración Ventana (COMPACTA)
         self.title(f"S.A.R.A. {VERSION}")
-        self.geometry("550x500")  # Casi cuadrada y más ancha
+        self.geometry("550x500")
         ctk.set_appearance_mode("Dark")
+        
+        # Ocultar ventana principal hasta que brain esté listo
+        self.withdraw()
+        
+    def _finish_init(self):
+        """Completa la inicialización en el hilo principal una vez brain está listo"""
+        if not self.brain_ready:
+            return
+        
+        # Cerrar splash
+        if self.splash:
+            self.splash.update_progress(100, "¡Listo!", "SARA está lista")
+            self.splash.close()
+            self.splash = None
         
         # Colores modernos
         self._setup_colors()
