@@ -202,6 +202,7 @@ class SaraUltraSplash:
             self.root.after(16, self._animate)
 
     def update_status(self, value, text, detail=None):
+        """Actualiza el estado del splash (método interno)"""
         self.loading_value = value
         self.loading_text = text
         if detail:
@@ -210,6 +211,22 @@ class SaraUltraSplash:
         # Auto-cerrar cuando llegue al 100%
         if value >= 100 and self.is_running:
             self.root.after(1200, self.close)  # Cerrar después de 1.2 segundos
+    
+    def update_progress(self, value, status, detail=""):
+        """
+        Método de compatibilidad para brain.py y sara.py
+        
+        Args:
+            value: Valor de 0-100
+            status: Texto principal de estado
+            detail: Texto de detalle (opcional)
+        """
+        self.update_status(value, status, detail if detail else None)
+        self.root.update()  # Forzar actualización de UI
+    
+    def show(self):
+        """Muestra el splash screen (compatibilidad con código anterior)"""
+        self.root.update()
     
     def close(self):
         # Efecto de cierre "TV apagándose"
@@ -240,8 +257,9 @@ class SaraUltraSplash:
 
 # --- Helper para integrarlo en tu sistema principal ---
 def crear_splash():
-    """Crea la instancia para usar desde brain.py"""
+    """Crea la instancia para usar desde brain.py y sara.py"""
     splash = SaraUltraSplash()
+    splash.show()
     return splash
 
 # --- SIMULACIÓN DE ARRANQUE (Solo si ejecutas este archivo directo) ---
