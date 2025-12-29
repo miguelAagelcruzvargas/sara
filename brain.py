@@ -359,61 +359,70 @@ class SaraBrain:
         
         # GEMINI
         k_gem = self.config.get("gemini_key")
-        if k_gem and genai:
-            try:
-                genai.configure(api_key=k_gem)
-                # Lista de modelos a probar (en orden de prioridad/gratuidad)
-                modelos_candidatos = [
-                    'gemini-2.0-flash-exp',       # Experimental suele ser gratis
-                    'gemini-2.0-flash-lite-preview-02-05', # Lite es eficiente
-                    'gemini-1.5-flash',           # Estándar actual
-                    'gemini-pro',                 # Legacy
-                    'gemini-2.0-flash'            # Último recurso (puede tener cuota 0)
-                ]
-                
-                modelo_seleccionado = None
-                
-                # Probar modelos disponibles
+        if k_gem:
+            # Lazy import de genai
+            genai_lib = _lazy_import_genai()
+            if genai_lib:
                 try:
-                    disponibles = [m.name for m in genai.list_models()]
-                    for candidato in modelos_candidatos:
-                        # Buscar coincidencia exacta o parcial (ej: context/models/)
-                        if any(candidato in m for m in disponibles):
-                            modelo_seleccionado = candidato
-                            break
-                except: pass
-                
-                # Si no se encontró ninguno de la lista, usar fallback
-                if not modelo_seleccionado:
-                    modelo_seleccionado = 'gemini-2.0-flash-exp'
-                
-                self.clients["Gemini"] = genai.GenerativeModel(
-                    modelo_seleccionado,
-                    system_instruction="Eres SARA, un asistente de IA avanzado. Tus respuestas son precisas y profesionales."
-                )
-                logging.info(f"✅ Gemini conectado exitosamente ({modelo_seleccionado})")
-            except Exception as e:
-                logging.warning(f"Error conectando Gemini: {e}")
-        elif k_gem and not genai:
-            logging.warning("Gemini Key detectada pero la librería 'google-generative-ai' no está instalada.")
+                    genai_lib.configure(api_key=k_gem)
+                    # Lista de modelos a probar (en orden de prioridad/gratuidad)
+                    modelos_candidatos = [
+                        'gemini-2.0-flash-exp',       # Experimental suele ser gratis
+                        'gemini-2.0-flash-lite-preview-02-05', # Lite es eficiente
+                        'gemini-1.5-flash',           # Estándar actual
+                        'gemini-pro',                 # Legacy
+                        'gemini-2.0-flash'            # Último recurso (puede tener cuota 0)
+                    ]
+                    
+                    modelo_seleccionado = None
+                    
+                    # Probar modelos disponibles
+                    try:
+                        disponibles = [m.name for m in genai_lib.list_models()]
+                        for candidato in modelos_candidatos:
+                            # Buscar coincidencia exacta o parcial (ej: context/models/)
+                            if any(candidato in m for m in disponibles):
+                                modelo_seleccionado = candidato
+                                break
+                    except: pass
+                    
+                    # Si no se encontró ninguno de la lista, usar fallback
+                    if not modelo_seleccionado:
+                        modelo_seleccionado = 'gemini-2.0-flash-exp'
+                    
+                    self.clients["Gemini"] = genai_lib.GenerativeModel(
+                        modelo_seleccionado,
+                        system_instruction="Eres SARA, un asistente de IA avanzado. Tus respuestas son precisas y profesionales."
+                    )
+                    logging.info(f"✅ Gemini conectado exitosamente ({modelo_seleccionado})")
+                except Exception as e:
+                    logging.warning(f"Error conectando Gemini: {e}")
+            else:
+                logging.warning("Gemini Key detectada pero la librería 'google-generative-ai' no está instalada.")
         
         # GROQ
         k_groq = self.config.get("groq_key")
         if k_groq:
-            try:
-                self.clients["Groq"] = Groq(api_key=k_groq)
-                logging.info("✅ Groq conectado exitosamente")
-            except Exception as e:
-                logging.warning(f"Error conectando Groq: {e}")
+            # Lazy import de Groq
+            Groq_class = _lazy_import_groq()
+            if Groq_class:
+                try:
+                    self.clients["Groq"] = Groq_class(api_key=k_groq)
+                    logging.info("✅ Groq conectado exitosamente")
+                except Exception as e:
+                    logging.warning(f"Error conectando Groq: {e}")
 
         # OPENAI
         k_openai = self.config.get("openai_key")
         if k_openai:
-            try:
-                self.clients["ChatGPT"] = OpenAI(api_key=k_openai)
-                logging.info("✅ OpenAI conectado exitosamente")
-            except Exception as e:
-                logging.warning(f"Error conectando OpenAI: {e}")
+            # Lazy import de OpenAI
+            OpenAI_class = _lazy_import_openai()
+            if OpenAI_class:
+                try:
+                    self.clients["ChatGPT"] = OpenAI_class(api_key=k_openai)
+                    logging.info("✅ OpenAI conectado exitosamente")
+                except Exception as e:
+                    logging.warning(f"Error conectando OpenAI: {e}")
 
         self.ia_online = len(self.clients) > 0
         
