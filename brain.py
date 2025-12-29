@@ -216,7 +216,7 @@ class SaraBrain:
                 splash_callback(30, "Cargando NLU...", "Modelo all-MiniLM-L6-v2")
             # Pasamos self.consultar_ia como callback para Layer 3 (AI Fallback)
             # Y splash_callback para mostrar progreso
-            self.intent_classifier = HybridIntentClassifier(ia_callback=None, splash_callback=splash_callback)
+            self.intent_classifier = HybridIntentClassifier(ia_callback=self.consultar_ia, splash_callback=splash_callback)
             logging.info("✅ HybridIntentClassifier inicializado")
         except Exception as e:
             logging.error(f"❌ Error inicializando HybridIntentClassifier: {e}")
