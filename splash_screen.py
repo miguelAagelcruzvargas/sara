@@ -1,212 +1,287 @@
 """
-🎨 SARA - Splash Screen de Carga
-=================================
-
-Pantalla de carga visual que muestra el progreso de inicialización.
+🎨 SARA - ULTRA SPLASH SCREEN (Neural Core Edition)
+===================================================
+Diseño generativo avanzado con sistema de partículas,
+efectos de neón y animaciones matemáticas fluidas.
 """
 
 import tkinter as tk
-from tkinter import ttk
+import math
+import random
 import threading
 import time
-from pathlib import Path
 
-class SaraSplashScreen:
-    """Splash screen con barra de progreso para inicialización de SARA."""
+# --- PALETA DE COLORES "CYBER-VOID" ---
+C = {
+    'bg': '#050510',        # Negro profundo
+    'primary': '#00F3FF',   # Cyan Eléctrico
+    'secondary': '#BC13FE', # Magenta Neón
+    'text': '#E0E0FF',      # Blanco azulado
+    'text_sub': '#8888AA',  # Gris azulado (CORREGIDO: Faltaba este color)
+    'dim': '#2A2A40',       # Gris oscuro para estructuras
+    'grid': '#0A0A15'       # Color de la retícula de fondo
+}
+
+class Particle:
+    """Representa un nodo de la red neuronal"""
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.x = random.uniform(0, w)
+        self.y = random.uniform(0, h)
+        self.vx = random.uniform(-0.5, 0.5) # Velocidad X
+        self.vy = random.uniform(-0.5, 0.5) # Velocidad Y
+        self.size = random.uniform(1, 3)
     
-    def __init__(self, is_first_time=False):
+    def move(self):
+        self.x += self.vx
+        self.y += self.vy
+        
+        # Rebotar en bordes
+        if self.x <= 0 or self.x >= self.w: self.vx *= -1
+        if self.y <= 0 or self.y >= self.h: self.vy *= -1
+
+class SaraUltraSplash:
+    def __init__(self):
         self.root = tk.Tk()
-        self.root.title("SARA - Inicializando")
-        self.root.geometry("600x400" if is_first_time else "600x350")
-        self.root.resizable(False, False)
+        self.width = 700
+        self.height = 400
         
-        # Centrar ventana
-        self.root.update_idletasks()
-        width = 600
-        height = 400 if is_first_time else 350
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        # Configuración de ventana
+        self._setup_window()
         
-        # Sin bordes de ventana
+        # --- CANVAS PRINCIPAL ---
+        self.canvas = tk.Canvas(
+            self.root, width=self.width, height=self.height,
+            bg=C['bg'], highlightthickness=0
+        )
+        self.canvas.pack(fill='both', expand=True)
+        
+        # --- SISTEMA DE PARTÍCULAS ---
+        self.particles = [Particle(self.width, self.height) for _ in range(45)]
+        
+        # Estado de carga
+        self.loading_value = 0
+        self.loading_text = "INITIALIZING..."
+        self.log_lines = []
+        self.is_running = True
+        
+        # Iniciar loop de animación
+        self._animate()
+        
+    def _setup_window(self):
+        ws = self.root.winfo_screenwidth()
+        hs = self.root.winfo_screenheight()
+        x = (ws/2) - (self.width/2)
+        y = (hs/2) - (self.height/2)
+        self.root.geometry('%dx%d+%d+%d' % (self.width, self.height, x, y))
         self.root.overrideredirect(True)
-        
-        # Siempre al frente (para que no se oculte)
         self.root.attributes('-topmost', True)
+        self.root.configure(bg=C['bg'])
         
-        # Fondo con gradiente simulado (oscuro elegante)
-        self.root.configure(bg='#0f0f23')
+        # Crear borde brillante de ventana
+        frame = tk.Frame(self.root, bg=C['primary'])
+        frame.place(x=0, y=0, width=self.width, height=2) # Top border glow
+
+    def _draw_neural_network(self):
+        """Dibuja nodos y conexiones si están cerca"""
+        c = self.canvas
+        # Limpiar canvas
+        c.delete("neural") 
         
-        # Frame principal con borde redondeado simulado
-        main_frame = tk.Frame(self.root, bg='#0f0f23')
-        main_frame.pack(expand=True, fill='both', padx=0, pady=0)
-        
-        # Frame interno con padding
-        content_frame = tk.Frame(main_frame, bg='#0f0f23')
-        content_frame.pack(expand=True, fill='both', padx=40, pady=40)
-        
-        # Logo/Título con mejor tipografía
-        title = tk.Label(
-            content_frame,
-            text="S.A.R.A",
-            font=('Segoe UI', 48, 'bold'),
-            fg='#00d9ff',
-            bg='#0f0f23'
-        )
-        title.pack(pady=(0, 5))
-        
-        # Subtítulo más elegante
-        subtitle = tk.Label(
-            content_frame,
-            text="Sistema Avanzado de Respuesta Automática",
-            font=('Segoe UI', 11),
-            fg='#7c8db5',
-            bg='#0f0f23'
-        )
-        subtitle.pack(pady=(0, 20))
-        
-        # Mensaje de bienvenida (solo primera vez) - Más compacto
-        if is_first_time:
-            welcome_frame = tk.Frame(content_frame, bg='#1a1f3a', relief='flat', bd=0)
-            welcome_frame.pack(pady=(0, 25), fill='x', ipady=20)
-            
-            welcome_msg = tk.Label(
-                welcome_frame,
-                text="✨ ¡Bienvenido a tu asistente inteligente!\n\nPreparando todo para ti...",
-                font=('Segoe UI', 12),
-                fg='#ffffff',
-                bg='#1a1f3a',
-                justify='center'
+        for p in self.particles:
+            p.move()
+            # Dibujar nodo
+            c.create_oval(
+                p.x-p.size, p.y-p.size, p.x+p.size, p.y+p.size,
+                fill=C['primary'], outline='', tags="neural"
             )
-            welcome_msg.pack()
-        
-        # Label de estado - Más prominente
-        self.status_label = tk.Label(
-            content_frame,
-            text="Iniciando...",
-            font=('Segoe UI', 13, 'bold'),
-            fg='#ffffff',
-            bg='#0f0f23'
-        )
-        self.status_label.pack(pady=(0, 15))
-        
-        # Barra de progreso moderna
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure(
-            "Modern.Horizontal.TProgressbar",
-            troughcolor='#1a1f3a',
-            background='#00d9ff',
-            bordercolor='#0f0f23',
-            lightcolor='#00d9ff',
-            darkcolor='#00b8d4',
-            thickness=8
-        )
-        
-        self.progress = ttk.Progressbar(
-            content_frame,
-            style="Modern.Horizontal.TProgressbar",
-            length=500,
-            mode='determinate'
-        )
-        self.progress.pack(pady=(0, 12))
-        
-        # Label de detalle - Más sutil
-        self.detail_label = tk.Label(
-            content_frame,
-            text="",
-            font=('Segoe UI', 10),
-            fg='#5a6b8c',
-            bg='#0f0f23'
-        )
-        self.detail_label.pack()
-        
-        # Versión - Más discreta
-        version_label = tk.Label(
-            content_frame,
-            text="v2.0",
-            font=('Segoe UI', 9),
-            fg='#3a4b6c',
-            bg='#0f0f23'
-        )
-        version_label.pack(side='bottom', pady=(20, 0))
-        
-        self.is_closed = False
-        self.auto_close_scheduled = False
-    
-    def update_progress(self, value, status, detail=""):
-        """
-        Actualiza la barra de progreso y los textos.
-        
-        Args:
-            value: Valor de 0-100
-            status: Texto principal de estado
-            detail: Texto de detalle (opcional)
-        """
-        if not self.is_closed:
-            self.progress['value'] = value
-            self.status_label.config(text=status)
-            self.detail_label.config(text=detail)
-            self.root.update()
             
-            # Auto-cerrar cuando llegue al 100%
-            if value >= 100 and not self.auto_close_scheduled:
-                self.auto_close_scheduled = True
-                self.root.after(800, self.close)  # Cerrar después de 0.8 segundos
-    
-    def show(self):
-        """Muestra el splash screen (no bloqueante)."""
-        self.root.update()
+            # Conectar con vecinos cercanos
+            for other in self.particles:
+                dist = math.hypot(p.x - other.x, p.y - other.y)
+                if dist < 80: # Si están cerca, conectar
+                    # Simulamos transparencia con grosor y color grisáceo
+                    width = (1 - dist/80) * 1.5
+                    c.create_line(
+                        p.x, p.y, other.x, other.y,
+                        fill=C['dim'] if dist > 50 else '#224466',
+                        width=width, tags="neural"
+                    )
+
+    def _draw_interface(self):
+        """Dibuja la UI estática y dinámica superior"""
+        c = self.canvas
+        c.delete("ui")
+        
+        cx, cy = self.width - 100, self.height - 80 # Centro del loader
+        radius = 40
+        
+        # 1. TÍTULO GRANDE
+        c.create_text(
+            40, 60, text="S.A.R.A.", 
+            font=("Segoe UI", 48, "bold"), fill=C['text'], anchor="w", tags="ui"
+        )
+        c.create_text(
+            40, 100, text="SYSTEM v2.0 // NEURAL CORE ACTIVE", 
+            font=("Consolas", 10), fill=C['primary'], anchor="w", tags="ui"
+        )
+        
+        # 2. LOG DE CONSOLA (Estilo Hacker)
+        y_start = 160
+        # Mostrar últimas 6 líneas
+        current_logs = self.log_lines[-6:]
+        
+        for i, line in enumerate(current_logs): 
+            # Lógica de colores corregida:
+            # La última línea (i==5 si hay 6) es brillante
+            # Las anteriores se van apagando
+            is_last = (i == len(current_logs) - 1)
+            
+            if is_last:
+                color = C['text']
+            elif i > len(current_logs) - 3:
+                color = C['text_sub'] # Aquí usamos el color que faltaba
+            else:
+                color = '#444455'
+                
+            c.create_text(
+                45, y_start + (i*20),
+                text=f"> {line}",
+                font=("Consolas", 9), fill=color, anchor="w", tags="ui"
+            )
+
+        # 3. LOADER CIRCULAR (Arcos)
+        # Fondo del anillo
+        c.create_oval(
+            cx-radius, cy-radius, cx+radius, cy+radius,
+            outline=C['dim'], width=4, tags="ui"
+        )
+        
+        # Arco de progreso
+        angle = (self.loading_value / 100) * 360
+        if angle > 0:
+            c.create_arc(
+                cx-radius, cy-radius, cx+radius, cy+radius,
+                start=90, extent=-angle, style='arc',
+                outline=C['primary'], width=4, tags="ui"
+            )
+            
+        # Brillo decorativo rotando (simulado)
+        rot = (time.time() * 200) % 360
+        rad_dec = radius + 8
+        dx = math.cos(math.radians(rot)) * rad_dec
+        dy = math.sin(math.radians(rot)) * rad_dec
+        c.create_oval(
+            cx+dx-2, cy+dy-2, cx+dx+2, cy+dy+2,
+            fill=C['secondary'], outline='', tags="ui"
+        )
+
+        # Texto porcentaje
+        c.create_text(
+            cx, cy, text=f"{int(self.loading_value)}%",
+            font=("Segoe UI", 12, "bold"), fill=C['text'], tags="ui"
+        )
+        
+        # Estado texto
+        c.create_text(
+            cx, cy + 60, text=self.loading_text,
+            font=("Segoe UI", 8), fill=C['text'], tags="ui"
+        )
+
+    def _animate(self):
+        if not self.is_running: return
+        
+        try:
+            self._draw_neural_network()
+            self._draw_interface()
+        except Exception as e:
+            print(f"Error en animación: {e}")
+        
+        # Llamar al siguiente frame (aprox 60 FPS)
+        if self.is_running:
+            self.root.after(16, self._animate)
+
+    def update_status(self, value, text, detail=None):
+        self.loading_value = value
+        self.loading_text = text
+        if detail:
+            self.log_lines.append(detail)
+        
+        # Auto-cerrar cuando llegue al 100%
+        if value >= 100 and self.is_running:
+            self.root.after(1200, self.close)  # Cerrar después de 1.2 segundos
     
     def close(self):
-        """Cierra el splash screen."""
-        if not self.is_closed:
-            self.is_closed = True
+        # Efecto de cierre "TV apagándose"
+        if not self.is_running: return
+        
+        try:
+            for i in range(10):
+                h = self.height * (1 - (i/10))
+                w = self.width * (1 + (i/20)) # Se ensancha un poco al cerrarse
+                
+                # Evitar geometría inválida
+                if h < 1: h = 1
+                if w < 1: w = 1
+                
+                ws = self.root.winfo_screenwidth()
+                hs = self.root.winfo_screenheight()
+                x = (ws/2) - (w/2)
+                y = (hs/2) - (h/2)
+                
+                self.root.geometry('%dx%d+%d+%d' % (int(w), int(h), int(x), int(y)))
+                self.root.update()
+                time.sleep(0.02)
+            
+            self.is_running = False
             self.root.destroy()
+        except tk.TclError:
+            pass # La ventana ya se cerró
 
-
-# Función de utilidad para usar en brain.py
+# --- Helper para integrarlo en tu sistema principal ---
 def crear_splash():
-    """Crea y retorna una instancia del splash screen."""
-    # Detectar si es primera vez (si no existe el cache de embeddings)
-    from pathlib import Path
-    cache_file = Path(__file__).parent / ".sara_models" / "intent_embeddings.pkl"
-    is_first_time = not cache_file.exists()
-    
-    splash = SaraSplashScreen(is_first_time=is_first_time)
-    splash.show()
+    """Crea la instancia para usar desde brain.py"""
+    splash = SaraUltraSplash()
     return splash
 
-
+# --- SIMULACIÓN DE ARRANQUE (Solo si ejecutas este archivo directo) ---
 if __name__ == "__main__":
-    # Test - Mostrar splash y esperar a que lo cierres manualmente
-    print("Mostrando splash screen de bienvenida (primera vez)...")
-    print("Cierra la ventana manualmente para terminar el test.")
+    app = SaraUltraSplash()
     
-    splash = SaraSplashScreen(is_first_time=True)
-    splash.show()
-    
-    # Simular carga
-    steps = [
-        (20, "Cargando configuración...", "config.json"),
-        (40, "Descargando modelo NLU...", "all-MiniLM-L6-v2 (90MB)"),
-        (60, "Generando embeddings...", "1000+ ejemplos de entrenamiento"),
-        (80, "Inicializando módulos...", "Voice, DevOps, Health, Games..."),
-        (100, "¡Listo!", "SARA está lista para usar")
-    ]
-    
-    import threading
-    def simulate_loading():
-        for value, status, detail in steps:
-            splash.update_progress(value, status, detail)
-            time.sleep(1.5)
-        # NO cerrar automáticamente, dejar que el usuario cierre manualmente
-    
-    # Ejecutar simulación en hilo separado
-    threading.Thread(target=simulate_loading, daemon=True).start()
-    
-    # Mantener ventana abierta hasta que la cierres manualmente
-    try:
-        splash.root.mainloop()
-    except:
-        pass
+    def loader_logic():
+        # Secuencia de carga simulada con "logs" técnicos
+        sequences = [
+            (5, "BOOT_SEQUENCE", "Verificando integridad de memoria..."),
+            (12, "LOADING_KERNEL", "Cargando torch_cuda_backend.dll"),
+            (25, "NEURAL_HANDSHAKE", "Estableciendo conexión sináptica"),
+            (38, "LOADING_MODELS", "Cargando Weights: all-MiniLM-L6-v2"),
+            (45, "LOADING_MODELS", "Descomprimiendo tensores (FP16)..."),
+            (58, "INIT_AUDIO", "PyAudio Stream: 44100Hz / Stereo"),
+            (70, "SECURITY_CHECK", "Validando tokens de API..."),
+            (82, "SYNCING_DB", "Conectando a Second Brain (SQLite)"),
+            (95, "FINALIZING", "Optimizando UI rendering..."),
+            (100, "SYSTEM_READY", "S.A.R.A. está en línea.")
+        ]
+        
+        try:
+            for val, text, log in sequences:
+                if not app.is_running: break
+                
+                # Interpolación suave
+                current = app.loading_value
+                while current < val:
+                    if not app.is_running: break
+                    current += 1
+                    app.update_status(current, text)
+                    time.sleep(random.uniform(0.01, 0.03))
+                
+                app.update_status(val, text, log)
+                time.sleep(random.uniform(0.4, 0.8))
+            
+            time.sleep(1)
+            app.close()
+        except Exception as e:
+            print(f"Error en loading: {e}")
+
+    threading.Thread(target=loader_logic, daemon=True).start()
+    app.root.mainloop()
