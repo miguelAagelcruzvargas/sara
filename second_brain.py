@@ -6,7 +6,15 @@ from sentence_transformers import SentenceTransformer
 import PyPDF2
 
 class SecondBrain:
-    def __init__(self, db_path="sara_memory_db"):
+    def __init__(self, db_path="sara_memory_db", shared_model=None):
+        """
+        Inicializa Second Brain con ChromaDB.
+        
+        Args:
+            db_path: Ruta a la base de datos ChromaDB
+            shared_model: Modelo SentenceTransformer compartido (opcional).
+                         Si se proporciona, se reutiliza en lugar de cargar uno nuevo.
+        """
         self.db_path = db_path
         
         logging.info("🧠 Inicializando Second Brain (ChromaDB)...")
@@ -14,9 +22,15 @@ class SecondBrain:
             # Inicializar cliente persistente
             self.client = chromadb.PersistentClient(path=db_path)
             
-            # Inicializar modelo de embeddings (local, rápido)
-            # all-MiniLM-L6-v2 es ideal para CPU (rápido y ligero)
-            self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+            # Usar modelo compartido si está disponible, sino crear uno nuevo
+            if shared_model is not None:
+                logging.info("🔄 Reutilizando modelo compartido para Second Brain")
+                self.embedder = shared_model
+            else:
+                logging.info("📥 Cargando nuevo modelo para Second Brain")
+                # Inicializar modelo de embeddings (local, rápido)
+                # all-MiniLM-L6-v2 es ideal para CPU (rápido y ligero)
+                self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
             
             # Crear o recuperar colecciones
             self.short_term = self.client.get_or_create_collection(
