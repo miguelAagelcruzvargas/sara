@@ -735,11 +735,18 @@ class SaraUltimateGUI(ctk.CTk):
         thread.start()
 
     def procesar_hilo(self, texto):
+        with open("debug_trace.txt", "a", encoding="utf-8") as f:
+            f.write(f"DEBUG_FILE: procesar_hilo called with '{texto}'\n")
+        print(f"DEBUG SARA: procesar_hilo called with '{texto}'")
         t = threading.Thread(target=self._procesar_comando, args=(texto,))
         t.start()
+        print("DEBUG SARA: Thread started")
         
     def _procesar_comando(self, texto):
         try:
+            with open("debug_trace.txt", "a", encoding="utf-8") as f:
+                f.write(f"DEBUG_FILE: Inside _procesar_comando with '{texto}'\n")
+            print(f"DEBUG SARA: Inside _procesar_comando with '{texto}'")
             resp, origen = self.brain.procesar(texto)
             
             # --- MANEJO DE COMANDOS UI ESPECIALES ---
@@ -893,7 +900,15 @@ class SaraUltimateGUI(ctk.CTk):
                             print("DEBUG: Ignorado por falta de wake word")
                         # Si no detecta "SARA", ignorar (no procesar)
                         
-                    except: pass
+                    except sr.UnknownValueError:
+                        # Ruido ambiental o voz no reconocida - Ignorar silenciosamente
+                        pass
+                    except sr.RequestError as e:
+                        logging.warning(f"Error conexión Google Speech: {e}")
+                    except Exception as e:
+                        print(f"DEBUG CRITICAL ERROR IN VOICE LOOP: {e}")
+                        import traceback
+                        traceback.print_exc()
         except Exception as e:
             logging.error(f"Error microfono: {e}")
             self.is_listening = False
