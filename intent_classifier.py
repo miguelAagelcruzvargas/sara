@@ -152,7 +152,20 @@ class HybridIntentClassifier:
         """
         cmd = comando.lower().strip()
         
-        # CAPA 1: Pattern Matching (comandos críticos)
+        # REMOVER WAKE WORDS (Robustez)
+        # Esto asegura que "zara sube el volumen" se procese como "sube el volumen"
+        wake_words = ["sara", "zara", "sarah", "zaira", "oye sara", "hey sara", "hola sara", "ok sara"]
+        
+        for ww in wake_words:
+            if cmd.startswith(ww + " "):
+                cmd = cmd[len(ww)+1:].strip()
+                logger.debug(f"Wake word removida: '{ww}' -> '{cmd}'")
+                break
+            elif cmd == ww:
+                cmd = "" # Solo dijeron el nombre
+        
+        if not cmd:
+            return "CONVERSACION", {"text": comando}, "fallback"
         intent, params = self._pattern_match(cmd)
         if intent:
             logger.debug(f"✅ Pattern Match: {intent}")
