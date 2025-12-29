@@ -730,15 +730,18 @@ Analiza la intención. Responde SOLO JSON válido:
             if self.sys_control:
                 amount = params.get("amount", 10)
                 return self.sys_control.adjust_volume(amount), "sys"
+            return "⚠️ Control de sistema no disponible (revisa logs).", "error"
         
         elif intent == "VOLUMEN_BAJAR":
             if self.sys_control:
                 amount = params.get("amount", 10)
                 return self.sys_control.adjust_volume(-amount), "sys"
+            return "⚠️ Control de sistema no disponible.", "error"
         
         elif intent == "SILENCIO":
             if self.sys_control:
                 return self.sys_control.mute_volume(), "sys"
+            return "⚠️ Control de audio no disponible.", "error"
         
         elif intent == "ABRIR_APP":
             app_name = params.get("app_name", "")
