@@ -31,6 +31,9 @@ class SaraSplashScreen:
         # Sin bordes de ventana
         self.root.overrideredirect(True)
         
+        # Siempre al frente (para que no se oculte)
+        self.root.attributes('-topmost', True)
+        
         # Fondo oscuro
         self.root.configure(bg='#1a1a2e')
         
@@ -166,8 +169,12 @@ def crear_splash():
 
 
 if __name__ == "__main__":
-    # Test
-    splash = crear_splash()
+    # Test - Mostrar splash y esperar a que lo cierres manualmente
+    print("Mostrando splash screen de bienvenida (primera vez)...")
+    print("Cierra la ventana manualmente para terminar el test.")
+    
+    splash = SaraSplashScreen(is_first_time=True)
+    splash.show()
     
     # Simular carga
     steps = [
@@ -178,9 +185,18 @@ if __name__ == "__main__":
         (100, "¡Listo!", "SARA está lista para usar")
     ]
     
-    for value, status, detail in steps:
-        splash.update_progress(value, status, detail)
-        time.sleep(1)
+    import threading
+    def simulate_loading():
+        for value, status, detail in steps:
+            splash.update_progress(value, status, detail)
+            time.sleep(1.5)
+        # NO cerrar automáticamente, dejar que el usuario cierre manualmente
     
-    time.sleep(1)
-    splash.close()
+    # Ejecutar simulación en hilo separado
+    threading.Thread(target=simulate_loading, daemon=True).start()
+    
+    # Mantener ventana abierta hasta que la cierres manualmente
+    try:
+        splash.root.mainloop()
+    except:
+        pass
