@@ -14,6 +14,9 @@ Fecha: 2025-12-29
 import logging
 import difflib
 import re
+import pickle
+import hashlib
+from pathlib import Path
 from typing import Tuple, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer, util
 import numpy as np
@@ -24,6 +27,10 @@ from intent_examples_full import INTENT_EXAMPLES_FULL
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Cache de embeddings
+CACHE_DIR = Path.home() / ".sara_cache"
+EMBEDDINGS_CACHE_FILE = CACHE_DIR / "intent_embeddings.pkl"
 
 
 class HybridIntentClassifier:
@@ -63,10 +70,48 @@ class HybridIntentClassifier:
     def _generar_embeddings(self) -> Dict[str, np.ndarray]:
         """
         Genera embeddings para todos los ejemplos de entrenamiento.
+        Usa cache en disco para acelerar inicio (3s -> 0.5s).
         """
+        # Crear directorio de cache si no existe
+        CACHE_DIR.mkdir(exist_ok=True)
+        
+        # Calcular hash del dataset para detectar cambios
+        dataset_str = str(sorted(self.intent_examples.items()))
+        dataset_hash = hashlib.md5(dataset_str.encode()).hexdigest()
+        
+        # Intentar cargar desde cache
+        if EMBEDDINGS_CACHE_FILE.exists():
+            try:
+                with open(EMBEDDINGS_CACHE_FILE, 'rb') as f:
+                    cached_data = pickle.load(f)
+                
+                # Validar que el hash coincida
+                if cached_data.get('hash') == dataset_hash:
+                    logger.info("✅ Embeddings cargados desde cache (0.5s)")
+                    return cached_data['embeddings']
+                else:
+                    logger.info("⚠️ Cache inválido (dataset cambió), regenerando...")
+            except Exception as e:
+                logger.warning(f"Error cargando cache: {e}, regenerando...")
+        
+        # Generar embeddings (primera vez o cache inválido)
+        logger.info("🔄 Generando embeddings (esto toma ~3s la primera vez)...")
         embeddings = {}
         for intent, ejemplos in self.intent_examples.items():
             embeddings[intent] = self.model.encode(ejemplos, convert_to_tensor=True)
+        
+        # Guardar en cache
+        try:
+            cache_data = {
+                'hash': dataset_hash,
+                'embeddings': embeddings
+            }
+            with open(EMBEDDINGS_CACHE_FILE, 'wb') as f:
+                pickle.dump(cache_data, f)
+            logger.info(f"💾 Embeddings guardados en cache: {EMBEDDINGS_CACHE_FILE}")
+        except Exception as e:
+            logger.warning(f"No se pudo guardar cache: {e}")
+        
         return embeddings
     
     def clasificar(self, comando: str) -> Tuple[str, Dict[str, Any], str]:
