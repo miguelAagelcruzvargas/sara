@@ -714,6 +714,12 @@ Analiza la intención. Responde SOLO JSON válido:
         intent, params, source = self.intent_classifier.clasificar(comando)
         logging.info(f"🎯 Intent: {intent} | Source: {source} | Params: {params}")
         
+        # Etiqueta visual para depuración
+        tag = ""
+        if source == "ml": tag = "[ML] "
+        elif source == "ai": tag = "[AI] "
+        # Pattern match no lleva tag para no ensuciar comandos comunes
+        
         # Ejecutar según intención
         if intent == "MEMORIZAR":
             if self.second_brain:
