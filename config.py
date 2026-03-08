@@ -97,8 +97,10 @@ class ConfigManager:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(safe_data, f, indent=2)
             logging.info("✓ Configuración guardada en sara_config.json")
+            return True
         except Exception as e:
             logging.error(f"Error guardando config: {e}")
+            return False
     
     @staticmethod
     def guardar_api_keys(gemini_key="", groq_key="", openai_key="", weather_key="", provider="Gemini"):

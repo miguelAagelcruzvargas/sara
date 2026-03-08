@@ -119,6 +119,17 @@ class SaraKnowledge:
         "juegos": "Búsqueda fuzzy con fuzzywuzzy"
     }
     
+    # Sinónimos y Raíces para búsqueda flexible (Stemming manual)
+    SYNONYMS = {
+        "estudio": ["pdf", "resum", "flashcard", "examen", "tarea", "clase", "apunt", "estudi", "lectura"],
+        "gaming": ["jueg", "jugar", "gamer", "fps", "lag", "steam", "epic", "valorant", "competitivo"],
+        "salud": ["descans", "dolor", "cansad", "ojos", "trabaj", "pomodoro", "oficina", "salud", "fatiga"],
+        "sistema": ["volumen", "brillo", "lent", "limpi", "bater", "apag", "reinic", "proc", "optim", "ventan", "pc", "computadora"],
+        "productividad": ["zen", "enfoque", "distrac", "concentra"],
+        "devops": ["git", "codigo", "repositorio", "commit", "push", "pull", "rama"],
+        "tiempo": ["hora", "fecha", "dia", "reloj", "cuando"]
+    }
+    
     @staticmethod
     def get_capabilities_summary() -> str:
         """Resumen de todas las capacidades"""
@@ -126,7 +137,7 @@ class SaraKnowledge:
         summary += "Mis capacidades principales:\n\n"
         
         for categoria, info in SaraKnowledge.CAPACIDADES.items():
-            summary += f"📌 {info['descripcion'].upper()}\n"
+            summary += f"📌 {categoria.upper()}: {info['descripcion']}\n"
             for func in info['funciones']:
                 summary += f"  • {func}\n"
             summary += "\n"
@@ -138,7 +149,7 @@ class SaraKnowledge:
         """Información detallada de una categoría"""
         if categoria in SaraKnowledge.CAPACIDADES:
             info = SaraKnowledge.CAPACIDADES[categoria]
-            response = f"📌 {info['descripcion'].upper()}\n\n"
+            response = f"📌 {categoria.upper()} - {info['descripcion']}\n\n"
             response += "Funciones:\n"
             for func in info['funciones']:
                 response += f"• {func}\n"
@@ -160,55 +171,43 @@ class SaraKnowledge:
         """Respuestas inteligentes sin IA basadas en conocimiento"""
         query_lower = query.lower()
         
-        # Preguntas sobre identidad
+        # 1. Identidad básica
         if any(x in query_lower for x in ["quien eres", "que eres", "quién eres", "qué eres"]):
             return f"Soy {SaraKnowledge.INFO['nombre']}, {SaraKnowledge.INFO['descripcion']}. " \
                    f"Versión {SaraKnowledge.INFO['version']}. Fui creada para ser superior a Alexa."
         
-        # Preguntas sobre capacidades generales
-        if any(x in query_lower for x in ["que puedes hacer", "qué puedes hacer", "tus funciones", "capacidades"]):
+        if any(x in query_lower for x in ["que puedes hacer", "qué puedes hacer", "tus funciones", "capacidades", "ayuda"]):
             return SaraKnowledge.get_capabilities_summary()
-        
-        # NUEVO: Listar TODOS los comandos
-        if any(x in query_lower for x in ["lista comandos", "todos los comandos", "qué comandos", "que comandos", "comandos disponibles", "ayuda comandos"]):
+            
+        # 2. Listar comandos (General o por categoría)
+        if "comandos" in query_lower:
+            # Buscar categoría específica en la query
+            for cat, stems in SaraKnowledge.SYNONYMS.items():
+                if any(stem in query_lower for stem in stems):
+                    return SaraKnowledge.list_commands_by_category(cat)
             return SaraKnowledge.list_all_commands()
-        
-        # NUEVO: Comandos por categoría específica
-        if "comandos de estudio" in query_lower or "comandos pdf" in query_lower:
-            return SaraKnowledge.list_commands_by_category("estudio")
-        
-        if "comandos de juegos" in query_lower or "comandos gaming" in query_lower:
-            return SaraKnowledge.list_commands_by_category("gaming")
-        
-        if "comandos de salud" in query_lower or "comandos trabajo" in query_lower:
-            return SaraKnowledge.list_commands_by_category("salud")
-        
-        if "comandos de sistema" in query_lower or "comandos limpieza" in query_lower:
-            return SaraKnowledge.list_commands_by_category("sistema")
-        
-        # Comparación con Alexa
+
+        # 3. Comparación con Alexa
         if "alexa" in query_lower or "mejor que" in query_lower:
             return SaraKnowledge.why_better_than_alexa()
+            
+        # 4. Búsqueda inteligente por categorías (usando stemming)
+        matched_categories = []
+        for cat, stems in SaraKnowledge.SYNONYMS.items():
+            if any(stem in query_lower for stem in stems):
+                matched_categories.append(cat)
         
-        # Preguntas sobre categorías específicas
-        if "estudio" in query_lower or "pdf" in query_lower or "flashcard" in query_lower:
-            return SaraKnowledge.get_category_info("estudio")
-        
-        if "juego" in query_lower or "gaming" in query_lower or "valorant" in query_lower:
-            return SaraKnowledge.get_category_info("gaming")
-        
-        if "salud" in query_lower or "descanso" in query_lower:
-            return SaraKnowledge.get_category_info("salud")
-        
-        if "sistema" in query_lower or "limpieza" in query_lower or "optimiza" in query_lower:
-            return SaraKnowledge.get_category_info("sistema")
-        
-        # Preguntas sobre versión
+        # Priorizar coincidencias más específicas (si hay múltiples)
+        if matched_categories:
+            # Si hay varias, tomar la primera o la más relevante. 
+            # Por ahora tomamos la primera detectada.
+            return SaraKnowledge.get_category_info(matched_categories[0])
+            
+        # 5. Fallbacks específicos
         if "version" in query_lower or "versión" in query_lower:
             return f"Versión {SaraKnowledge.INFO['version']} - Última actualización: 2024-12-28"
         
-        # Preguntas sobre creador
-        if "creador" in query_lower or "quien te creo" in query_lower or "quién te creó" in query_lower:
+        if "creador" in query_lower or "quien te creo" in query_lower:
             return f"Fui creada por {SaraKnowledge.INFO['creador']} para ser el mejor asistente de voz para PC."
         
         return None  # No hay respuesta inteligente, usar IA

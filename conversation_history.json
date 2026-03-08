@@ -1,0 +1,42 @@
+{
+  "history": [
+    {
+      "user": "modo sentinela",
+      "sara": "🟠 ⚠️ Lenta (237ms) | IP: 192.168.1.69 | Host: DESKTOP-CK92BGU",
+      "intent": "DIAGNOSTICO_RED",
+      "timestamp": "2025-12-30T23:59:52.492387",
+      "topic": null
+    },
+    {
+      "user": "modo centinela",
+      "sara": "🛡️ Activando Modo Centinela...",
+      "intent": "SENTINEL_ACTIVAR",
+      "timestamp": "2025-12-31T00:00:05.438407",
+      "topic": null
+    },
+    {
+      "user": "MODO SENTINELA",
+      "sara": "🔴 ⚠️ Muy Lenta (390ms) | IP: 192.168.1.69 | Host: DESKTOP-CK92BGU",
+      "intent": "DIAGNOSTICO_RED",
+      "timestamp": "2025-12-31T00:04:15.772353",
+      "topic": null
+    },
+    {
+      "user": "MODO CENTINELA",
+      "sara": "🛡️ Activando Modo Centinela...",
+      "intent": "SENTINEL_ACTIVAR",
+      "timestamp": "2025-12-31T00:04:22.451634",
+      "topic": null
+    },
+    {
+      "user": "MODO CENTINELA",
+      "sara": "🛡️ Activando Modo Centinela...",
+      "intent": "SENTINEL_ACTIVAR",
+      "timestamp": "2025-12-31T00:23:24.743289",
+      "topic": null
+    }
+  ],
+  "current_topic": null,
+  "context": {},
+  "last_modified": "2025-12-31T00:23:24.743289"
+}

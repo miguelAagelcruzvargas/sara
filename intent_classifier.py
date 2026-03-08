@@ -1,227 +1,246 @@
 """
-🧠 SARA - Hybrid Intent Classifier
-===================================
+🧠 SARA - Hybrid Intent Classifier (FINAL PRODUCTION VERSION)
+=============================================================
 
 Sistema de clasificación de intenciones en 3 capas:
-1. Pattern Matching (0-5ms) - Comandos críticos
-2. ML Classifier (50ms) - Sentence-Transformers, 100% offline
-3. AI Fallback (1-2s) - Para casos ambiguos
+1. Pattern Matching (0-5ms) - Comandos críticos (Con protección de negación)
+2. ML Classifier (50ms) - Sentence-Transformers (Extracción segura)
+3. AI Fallback (1-2s) - Contexto dinámico inteligente
 
 Autor: SARA Team
 Fecha: 2025-12-29
 """
 
 import logging
-import difflib
 import re
 import pickle
 import hashlib
 import os
+import time
+import json 
 from pathlib import Path
-from typing import Tuple, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer, util
+from typing import Tuple, Dict, Any, Optional, List
 import numpy as np
 
-# Importar dataset completo
+# Dependencia externa principal
+from sentence_transformers import SentenceTransformer, util
+
+# Importar dataset completo (Asegúrate de que este archivo tenga el dict completo)
 from intent_examples_full import INTENT_EXAMPLES_FULL
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Cache de embeddings (DENTRO DEL PROYECTO)
+# Rutas y Cache
 PROJECT_DIR = Path(__file__).parent
 CACHE_DIR = PROJECT_DIR / ".sara_models"
 EMBEDDINGS_CACHE_FILE = CACHE_DIR / "intent_embeddings.pkl"
+COMMAND_CACHE_FILE = CACHE_DIR / "command_cache.pkl"
 
 
 class HybridIntentClassifier:
     """
-    Clasificador híbrido de intenciones que combina pattern matching,
-    ML local y AI fallback para máxima robustez y velocidad.
+    Clasificador híbrido optimizado para producción.
     """
     
     def __init__(self, ia_callback=None, splash_callback=None):
-        """
-        Inicializa el clasificador híbrido.
-        
-        Args:
-            ia_callback: Función para consultar IA (opcional, para Layer 3)
-            splash_callback: Función para actualizar splash screen (opcional)
-        """
         self.ia_callback = ia_callback
         self.splash_callback = splash_callback
         
-        # Crear directorio de modelos si no existe
+        # Crear directorio de modelos
         CACHE_DIR.mkdir(exist_ok=True)
-        
-        # Configurar cache de Sentence-Transformers DENTRO del proyecto
         os.environ['SENTENCE_TRANSFORMERS_HOME'] = str(CACHE_DIR)
         
-        # Cargar modelo de embeddings (Layer 2)
+        # Caché de comandos recientes
+        self.command_cache = {} 
+        self.cache_max_size = 50
+        self.cache_ttl = 300 
+        
+        # Cargar caché persistente
+        self._cargar_cache_comandos()
+        
+        # Cargar modelo ML (Layer 2)
         if self.splash_callback:
             self.splash_callback(30, "Cargando modelo NLU...", "Sentence-Transformers")
         
         logger.info("🧠 Cargando modelo Sentence-Transformers...")
-        self.model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder=str(CACHE_DIR))
+        self.model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', cache_folder=str(CACHE_DIR))
         
-        # Cargar ejemplos de entrenamiento
+        # Cargar datos
         if self.splash_callback:
-            self.splash_callback(50, "Cargando ejemplos...", "1000+ variaciones de comandos")
+            self.splash_callback(50, "Cargando ejemplos...", "Dataset completo")
         
-        self.intent_examples = self._cargar_ejemplos()
+        self.intent_examples = INTENT_EXAMPLES_FULL
         
-        # Generar embeddings de los ejemplos
+        # Generar embeddings
         if self.splash_callback:
-            self.splash_callback(60, "Generando embeddings...", "Esto puede tardar ~3s la primera vez")
+            self.splash_callback(60, "Generando embeddings...", "Calculando vectores")
         
         self.intent_embeddings = self._generar_embeddings()
         
         if self.splash_callback:
-            self.splash_callback(80, "NLU listo", f"{len(self.intent_examples)} intenciones cargadas")
+            self.splash_callback(80, "NLU listo", f"{len(self.intent_examples)} intenciones")
         
         logger.info(f"✅ Intent Classifier inicializado ({len(self.intent_examples)} intenciones)")
-        logger.info(f"📁 Modelos guardados en: {CACHE_DIR}")
-    
-    def _cargar_ejemplos(self) -> Dict[str, list]:
-        """
-        Carga ejemplos de entrenamiento desde archivo externo.
-        Dataset completo con 40+ intenciones y 1000+ ejemplos.
-        """
-        return INTENT_EXAMPLES_FULL
-    
+
     def _generar_embeddings(self) -> Dict[str, np.ndarray]:
-        """
-        Genera embeddings para todos los ejemplos de entrenamiento.
-        Usa cache en disco para acelerar inicio (3s -> 0.5s).
-        """
-        # Crear directorio de cache si no existe
-        CACHE_DIR.mkdir(exist_ok=True)
-        
-        # Calcular hash del dataset para detectar cambios
+        """Genera o carga embeddings validando hash."""
         dataset_str = str(sorted(self.intent_examples.items()))
         dataset_hash = hashlib.md5(dataset_str.encode()).hexdigest()
         
-        # Intentar cargar desde cache
         if EMBEDDINGS_CACHE_FILE.exists():
             try:
                 with open(EMBEDDINGS_CACHE_FILE, 'rb') as f:
                     cached_data = pickle.load(f)
-                
-                # Validar que el hash coincida
                 if cached_data.get('hash') == dataset_hash:
-                    logger.info("✅ Embeddings cargados desde cache (0.5s)")
+                    logger.info("✅ Embeddings cargados desde cache")
                     return cached_data['embeddings']
-                else:
-                    logger.info("⚠️ Cache inválido (dataset cambió), regenerando...")
             except Exception as e:
-                logger.warning(f"Error cargando cache: {e}, regenerando...")
+                logger.warning(f"Cache inválido o corrupto: {e}")
         
-        # Generar embeddings (primera vez o cache inválido)
-        logger.info("🔄 Generando embeddings (esto toma ~3s la primera vez)...")
+        logger.info("🔄 Generando embeddings frescos...")
         embeddings = {}
         for intent, ejemplos in self.intent_examples.items():
             embeddings[intent] = self.model.encode(ejemplos, convert_to_tensor=True)
         
-        # Guardar en cache
         try:
-            cache_data = {
-                'hash': dataset_hash,
-                'embeddings': embeddings
-            }
             with open(EMBEDDINGS_CACHE_FILE, 'wb') as f:
-                pickle.dump(cache_data, f)
-            logger.info(f"💾 Embeddings guardados en cache: {EMBEDDINGS_CACHE_FILE}")
+                pickle.dump({'hash': dataset_hash, 'embeddings': embeddings}, f)
         except Exception as e:
             logger.warning(f"No se pudo guardar cache: {e}")
         
         return embeddings
     
     def clasificar(self, comando: str) -> Tuple[str, Dict[str, Any], str]:
-        """
-        Clasifica un comando usando las 3 capas.
-        
-        Args:
-            comando: Comando de voz del usuario
-            
-        Returns:
-            (intent, params, source) donde:
-            - intent: Nombre de la intención detectada
-            - params: Parámetros extraídos del comando
-            - source: "pattern", "ml" o "ai" (capa que lo resolvió)
-        """
+        """Clasifica comandos usando lógica de 3 capas robusta."""
         cmd = comando.lower().strip()
         
-        # REMOVER WAKE WORDS (Robustez)
-        # Esto asegura que "zara sube el volumen" se procese como "sube el volumen"
-        wake_words = ["sara", "zara", "sarah", "zaira", "oye sara", "hey sara", "hola sara", "ok sara"]
-        
-        for ww in wake_words:
-            if cmd.startswith(ww + " "):
-                cmd = cmd[len(ww)+1:].strip()
-                logger.debug(f"Wake word removida: '{ww}' -> '{cmd}'")
-                break
-            elif cmd == ww:
-                cmd = "" # Solo dijeron el nombre
+        # Limpieza de Wake Words
+        wake_words_pattern = r"^(sara|zara|oye sara|hola sara|ok sara)\b[\s,.]*"
+        cmd = re.sub(wake_words_pattern, "", cmd, count=1).strip()
         
         if not cmd:
-            return "CONVERSACION", {"text": comando}, "fallback"
+            return "CONVERSACION", {"text": comando}, "empty"
+        
+        # 1. Caché (Optimización 0ms)
+        cmd_normalizado = self._normalizar_comando(cmd)
+        if cmd_normalizado in self.command_cache:
+            res = self.command_cache[cmd_normalizado]
+            if time.time() - res[3] < self.cache_ttl:
+                return res[0], res[1], "cache"
+        
+        # 2. Pattern Matching (Con protección de negación)
         intent, params = self._pattern_match(cmd)
         if intent:
-            logger.debug(f"✅ Pattern Match: {intent}")
+            self._guardar_en_cache(cmd_normalizado, intent, params, "pattern")
             return intent, params, "pattern"
         
-        # CAPA 2: ML Classifier (similitud semántica)
+        # 3. ML Classifier
         intent, params, confianza = self._ml_classify(cmd)
-        if confianza > 0.65:  # Umbral de confianza
-            logger.debug(f"✅ ML Classify: {intent} (confianza: {confianza:.2f})")
+        
+        # Bloqueo de Alucinaciones / Basura
+        if intent == "OUT_OF_SCOPE" and confianza > 0.55:
+            return "CONVERSACION", {"text": cmd, "ignored": True}, "ml_garbage"
+
+        # Umbral ML ajustado (sin huecos)
+        if confianza > 0.60:
+            self._guardar_en_cache(cmd_normalizado, intent, params, "ml")
             return intent, params, "ml"
         
-        # CAPA 3: AI Fallback (casos ambiguos)
-        if self.ia_callback and confianza < 0.65:
-            intent, params = self._ai_classify(cmd)
-            logger.debug(f"✅ AI Fallback: {intent}")
-            return intent, params, "ai"
+        # 4. AI Fallback (Si hay callback)
+        if self.ia_callback and confianza > 0.35:
+            intent_ai, params_ai = self._ai_classify(cmd)
+            # Solo guardamos en caché si la IA devolvió una intención válida
+            if intent_ai != "CONVERSACION":
+                self._guardar_en_cache(cmd_normalizado, intent_ai, params_ai, "ai")
+            return intent_ai, params_ai, "ai"
         
-        # Fallback final: conversación
-        return "CONVERSACION", {"text": comando}, "fallback"
+        # 5. Fallback final
+        return "CONVERSACION", {
+            "text": comando, 
+            "suggestions": self._generar_sugerencias(cmd, confianza)
+        }, "fallback"
     
     def _pattern_match(self, cmd: str) -> Tuple[Optional[str], Dict[str, Any]]:
         """
-        CAPA 1: Pattern matching para comandos críticos (ultra rápido).
+        Capa 1: ESTRICTA. Si hay negación, aborta para que decida el ML.
         """
+        # Guardia de Negación ESTRICTA
+        negation_trigger = re.search(r'\b(no|cancelar|detener|espera|alto)\b', cmd)
+        if negation_trigger:
+            # Ante cualquier duda o negación, pasamos al ML (Capa 2) que entiende contexto
+            return None, {}
+
         # Volumen
-        if any(x in cmd for x in ["sube", "subir", "súbele", "subele", "más alto", "volumen arriba"]):
+        if any(x in cmd for x in ["sube", "subir", "súbele", "más alto", "volumen arriba"]):
             if "volumen" in cmd or "sonido" in cmd or "alto" in cmd:
                 return "VOLUMEN_SUBIR", {"amount": 10}
         
-        if any(x in cmd for x in ["baja", "bajar", "bájale", "bajale", "más bajo", "volumen abajo"]):
+        if any(x in cmd for x in ["baja", "bajar", "bájale", "más bajo", "volumen abajo"]):
             if "volumen" in cmd or "sonido" in cmd or "bajo" in cmd:
                 return "VOLUMEN_BAJAR", {"amount": 10}
         
         if any(x in cmd for x in ["silencio", "mute", "cállate", "silencia"]):
             return "SILENCIO", {}
         
-        # Hora/Fecha (muy común)
-        if any(x in cmd for x in ["qué hora", "que hora", "hora actual"]):
+        # Hora/Fecha
+        if "hora" in cmd and ("que" in cmd or "dime" in cmd):
             return "HORA_FECHA", {"type": "hora"}
+            
+        # Apps (Regex simple)
+        if re.search(r'\b(abre|abrir|lanza|ejecuta)\b', cmd):
+            app_name = re.sub(r'\b(abre|abrir|lanza|ejecuta)\b', '', cmd).strip()
+            if app_name: return "ABRIR_APP", {"app_name": app_name}
+
+        # Media Control
+        if any(x in cmd for x in ["pausa", "detener música"]): return "REPRODUCIR_MEDIA", {"action": "pause"}
+        if any(x in cmd for x in ["reproduce", "continua", "play"]): return "REPRODUCIR_MEDIA", {"action": "play"}
+
+        # Sentinel / Seguridad - VARIANTES AMPLIADAS
+        # Activación
+        if any(x in cmd for x in [
+            "activar sentinela", "activa sentinela", "activar modo sentinela", 
+            "activar modo guardia", "activa modo guardia", "modo centinela",
+            "modo sentinela", "sentinel", "centinela", "sentinel on",
+            "protege el sistema", "bloquea el sistema", "bloquea pantalla",
+            "bloquea la pantalla", "bloquea acceso", "bloquea el acceso",
+            "activar seguridad", "activa seguridad", "modo seguridad",
+            "pon modo sentinela", "pon modo centinela", "ponte en guardia",
+            "activar vigilancia", "activa vigilancia", "inicia sentinel"
+        ]):
+            return "SENTINEL_ACTIVAR", {}
         
-        if any(x in cmd for x in ["qué día", "que dia", "fecha", "hoy es"]):
-            return "HORA_FECHA", {"type": "fecha"}
+        # Desactivación
+        if any(x in cmd for x in [
+            "desactivar sentinela", "desactiva sentinela", "desactivar modo sentinela",
+            "desactivar modo guardia", "desactiva modo guardia", "quita modo guardia",
+            "quita el modo guardia", "apagar centinela", "apaga centinela",
+            "apagar sentinela", "apaga sentinela", "sentinel off",
+            "desbloquea el sistema", "desbloquea sistema", "desbloquea pantalla",
+            "desbloquea la pantalla", "desbloquea acceso", "desbloquea el acceso",
+            "desactivar seguridad", "desactiva seguridad", "quita seguridad",
+            "ya llegué", "descansar centinela", "descansa centinela",
+            "terminar vigilancia", "termina vigilancia", "falsa alarma",
+            "cancelar sentinel", "cancela sentinel", "salir modo sentinela"
+        ]):
+            return "SENTINEL_DESACTIVAR", {}
+
+        # UI / Configuración
+        if any(x in cmd for x in ["abre configuración", "abrir configuración", "ajustes", "configuracion", "settings"]):
+            return "CONFIGURACION", {}
+        if any(x in cmd for x in ["mi perfil", "ver perfil", "mostrar perfil"]):
+            return "PERFIL", {}
         
         return None, {}
     
     def _ml_classify(self, cmd: str) -> Tuple[str, Dict[str, Any], float]:
-        """
-        CAPA 2: Clasificación ML usando similitud semántica.
-        """
-        # Generar embedding del comando
+        """Capa 2: Similitud semántica vectorial."""
         cmd_embedding = self.model.encode(cmd, convert_to_tensor=True)
         
         mejor_intent = "CONVERSACION"
         mejor_score = 0.0
         
-        # Calcular similitud con cada intención
         for intent, ejemplos_emb in self.intent_embeddings.items():
             similitudes = util.cos_sim(cmd_embedding, ejemplos_emb)
             max_sim = similitudes.max().item()
@@ -230,132 +249,170 @@ class HybridIntentClassifier:
                 mejor_score = max_sim
                 mejor_intent = intent
         
-        # Extraer parámetros
         params = self._extraer_parametros(cmd, mejor_intent)
-        
         return mejor_intent, params, mejor_score
     
     def _ai_classify(self, cmd: str) -> Tuple[str, Dict[str, Any]]:
         """
-        CAPA 3: Clasificación con IA para casos ambiguos.
+        Capa 3: Filtrado dinámico Top-5 y manejo robusto de JSON.
         """
         if not self.ia_callback:
             return "CONVERSACION", {"text": cmd}
-        
-        prompt = f"""Clasifica la intención del siguiente comando de voz:
 
+        # Selección dinámica de candidatos (Top 5 ML)
+        scores_candidatos = []
+        cmd_embedding = self.model.encode(cmd, convert_to_tensor=True)
+        
+        for intent, ejemplos_emb in self.intent_embeddings.items():
+            if intent in ["CONVERSACION", "OUT_OF_SCOPE"]: continue
+            similitudes = util.cos_sim(cmd_embedding, ejemplos_emb)
+            max_sim = similitudes.max().item()
+            scores_candidatos.append((max_sim, intent))
+        
+        scores_candidatos.sort(reverse=True, key=lambda x: x[0])
+        top_intents = [x[1] for x in scores_candidatos[:5]]
+        
+        ejemplos_contexto = []
+        for intent in top_intents:
+            ejs = ", ".join(self.intent_examples[intent][:3])
+            ejemplos_contexto.append(f"- {intent}: {ejs}")
+        
+        contexto_str = "\n".join(ejemplos_contexto)
+
+        prompt = f"""Clasifica este comando ambiguo.
 Comando: "{cmd}"
 
-Intenciones posibles:
-- MEMORIZAR: Guardar información
-- VOLUMEN_SUBIR/VOLUMEN_BAJAR/SILENCIO: Control de audio
-- ABRIR_APP: Abrir aplicación
-- BUSCAR_WEB: Buscar en internet
-- LEER_DOCUMENTO: Leer archivo/página
-- REPRODUCIR_MEDIA: Reproducir música/video
-- ALARMA: Programar recordatorio
-- CLIMA: Consultar clima
-- HORA_FECHA: Consultar hora/fecha
-- TRADUCIR: Traducir texto
-- CALCULAR: Operación matemática
-- MODO_ZEN: Activar modo concentración
-- CONVERSACION: Charla general
+Opciones probables (Top 5 ML):
+{contexto_str}
 
-Responde SOLO con JSON:
-{{"intent": "NOMBRE_INTENCION", "params": {{"key": "value"}}}}
-"""
+Si no encaja, responde CONVERSACION.
+Devuelve JSON: {{"intent": "X", "params": {{...}}}}"""
         
         try:
             respuesta, _ = self.ia_callback(prompt)
-            # Limpiar markdown si existe
-            if "```" in respuesta:
-                respuesta = respuesta.split("```")[1].replace("json", "").strip()
             
-            import json
-            resultado = json.loads(respuesta)
-            return resultado.get("intent", "CONVERSACION"), resultado.get("params", {"text": cmd})
+            # Limpieza y parseo robusto de JSON
+            start = respuesta.find('{')
+            end = respuesta.rfind('}') + 1
+            
+            if start != -1 and end != -1:
+                json_str = respuesta[start:end]
+                # Limpiar saltos de línea y errores comunes
+                json_str = re.sub(r'[\n\r\t]', ' ', json_str)
+                json_str = re.sub(r',\s*}', '}', json_str)
+                
+                resultado = json.loads(json_str)
+                intent = resultado.get("intent", "CONVERSACION")
+                
+                if intent not in self.intent_examples: 
+                    intent = "CONVERSACION"
+                    
+                params = resultado.get("params", {"text": cmd})
+                return intent, params
+            else:
+                return "CONVERSACION", {"text": cmd}
+
         except Exception as e:
-            logger.error(f"Error en AI Classify: {e}")
+            logger.warning(f"AI Fallback falló (JSON inválido o error): {e}")
             return "CONVERSACION", {"text": cmd}
-    
+
     def _extraer_parametros(self, cmd: str, intent: str) -> Dict[str, Any]:
         """
-        Extrae parámetros del comando según la intención.
+        Extracción de parámetros segura usando Regex (Boundaries \b).
         """
         params = {}
         
+        def clean_triggers(text, triggers):
+            for t in triggers:
+                # \b evita que "busca" rompa "buscador"
+                text = re.sub(r'\b' + re.escape(t) + r'\b', '', text, flags=re.IGNORECASE)
+            return text.strip()
+
         if intent == "MEMORIZAR":
-            # Remover triggers comunes
-            dato = cmd
-            for trigger in ["memoriza", "memorizar", "guarda", "guardar", "recuerda", "recordar", "anota", "anotar", "que", "esto", ":", "sara"]:
-                dato = dato.replace(trigger, "")
-            params["data"] = dato.strip()
-        
-        elif intent == "ABRIR_APP":
-            # Extraer nombre de app
-            app_name = cmd.replace("abre", "").replace("abrir", "").replace("lanza", "").replace("ejecuta", "").strip()
-            params["app_name"] = app_name
-        
-        elif intent == "BUSCAR_WEB":
-            # Extraer query
-            query = cmd
-            for trigger in ["busca", "buscar", "investiga", "investigar", "googlea", "en google", "sobre"]:
-                query = query.replace(trigger, "")
-            params["query"] = query.strip()
-        
-        elif intent == "REPRODUCIR_MEDIA":
-            # Extraer query
-            query = cmd.replace("pon", "").replace("reproduce", "").replace("música", "").replace("en youtube", "").strip()
-            params["query"] = query
-        
-        elif intent == "ALARMA":
-            # Extraer tiempo (simplificado, puede mejorarse)
-            match = re.search(r'(\d+)\s*(minuto|hora)', cmd)
-            if match:
-                cantidad = int(match.group(1))
-                unidad = match.group(2)
-                params["minutes"] = cantidad if unidad == "minuto" else cantidad * 60
-                params["message"] = "Alarma"
-        
-        elif intent == "TRADUCIR":
-            # Extraer texto e idioma
-            if "al inglés" in cmd or "al ingles" in cmd:
-                params["target_lang"] = "en"
-            elif "al español" in cmd:
-                params["target_lang"] = "es"
+            triggers = ["memoriza", "guarda", "recuerda", "anota", "que", "esto", "sara"]
+            params["data"] = clean_triggers(cmd, triggers)
             
-            texto = cmd.replace("traduce", "").replace("al inglés", "").replace("al español", "").strip()
-            params["text"] = texto
-        
+        elif intent == "BUSCAR_WEB":
+            triggers = ["busca", "investiga", "googlea", "guglea", "en google", "sobre", "informacion", "de"]
+            params["query"] = clean_triggers(cmd, triggers)
+            
+        elif intent == "ABRIR_APP":
+            triggers = ["abre", "abrir", "lanza", "ejecuta", "inicia", "app"]
+            params["app_name"] = clean_triggers(cmd, triggers)
+            
+        elif intent == "ALARMA":
+            nums = [int(s) for s in re.findall(r'\d+', cmd)]
+            if nums:
+                mult = 60 if re.search(r'\b(hora|horas)\b', cmd) else 1
+                params["minutes"] = nums[0] * mult
+            else:
+                params["minutes"] = 5
+                
         elif intent == "CALCULAR":
-            # Extraer expresión matemática
-            expr = cmd.replace("cuánto es", "").replace("calcula", "").replace("divide", "/").replace("por", "*").replace("más", "+").replace("menos", "-").replace("entre", "/").strip()
-            params["expression"] = expr
-        
+            expr = cmd
+            replacements = [
+                ("cuanto es", ""), ("calcula", ""), ("dime", ""), 
+                ("por", "*"), ("entre", "/"), ("mas", "+"), ("menos", "-")
+            ]
+            for old, new in replacements:
+                expr = re.sub(r'\b' + re.escape(old) + r'\b', new, expr)
+            params["expression"] = expr.strip()
+            
+        elif intent in ["GIT_PUSH", "GIT_PULL", "GIT_STATUS"]:
+             pass
+             
+        elif intent == "TRADUCIR":
+            if re.search(r'ingles|inglés', cmd): params["target_lang"] = "en"
+            elif re.search(r'frances|francés', cmd): params["target_lang"] = "fr"
+            else: params["target_lang"] = "es"
+            
+            triggers = ["traduce", "al ingles", "al español", "texto", "dime"]
+            params["text"] = clean_triggers(cmd, triggers)
+
         else:
             params["text"] = cmd
-        
+            
         return params
 
+    # Métodos auxiliares
+    def _normalizar_comando(self, cmd: str) -> str:
+        cmd = re.sub(r'[^\w\s]', '', cmd.lower())
+        return re.sub(r'\s+', ' ', cmd).strip()
+    
+    def _guardar_en_cache(self, cmd_normalizado: str, intent: str, params: Dict, source: str):
+        if len(self.command_cache) >= self.cache_max_size:
+            keys_sorted = sorted(self.command_cache.keys(), key=lambda k: self.command_cache[k][3])
+            for k in keys_sorted[:10]:
+                del self.command_cache[k]
+        
+        self.command_cache[cmd_normalizado] = (intent, params, source, time.time())
+        self._guardar_cache_persistente()
+    
+    def _cargar_cache_comandos(self):
+        if COMMAND_CACHE_FILE.exists():
+            try:
+                with open(COMMAND_CACHE_FILE, 'rb') as f:
+                    data = pickle.load(f)
+                    now = time.time()
+                    self.command_cache = {k:v for k,v in data.items() if now - v[3] < self.cache_ttl}
+            except: self.command_cache = {}
+            
+    def _guardar_cache_persistente(self):
+        if not hasattr(self, '_save_count'): self._save_count = 0
+        self._save_count += 1
+        if self._save_count >= 5:
+            try:
+                with open(COMMAND_CACHE_FILE, 'wb') as f:
+                    pickle.dump(self.command_cache, f)
+                self._save_count = 0
+            except: pass
 
-# Función de utilidad para testing
+    def _generar_sugerencias(self, cmd: str, confianza: float) -> List[str]:
+        if confianza < 0.3:
+            return ["No entendí bien, ¿puedes repetir?"]
+        return []
+
+# Testing block
 if __name__ == "__main__":
-    # Test básico
     classifier = HybridIntentClassifier()
-    
-    test_commands = [
-        "sube el volumen",
-        "memoriza que la clave es 777",
-        "abre chrome",
-        "busca recetas de pasta",
-        "qué hora es",
-        "pon música lofi",
-    ]
-    
-    print("\n🧪 TESTING INTENT CLASSIFIER\n" + "="*50)
-    for cmd in test_commands:
-        intent, params, source = classifier.clasificar(cmd)
-        print(f"\n📝 Comando: '{cmd}'")
-        print(f"   Intent: {intent}")
-        print(f"   Params: {params}")
-        print(f"   Source: {source}")
+    print("✅ Sistema listo para integración")

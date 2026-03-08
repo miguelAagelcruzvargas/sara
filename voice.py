@@ -1,3 +1,16 @@
+"""
+🎤 SARA - Neural Voice Engine (FINAL PRODUCTION VERSION)
+========================================================
+Motor de voz optimizado con:
+- Event Loop Fix (sin crashes en threads)
+- File Lock Fix (limpieza correcta en Windows)
+- Latency Fix (24kHz nativo, sin resampling)
+- Fast Stop (interrupción inmediata)
+
+Autor: SARA Team
+Fecha: 2025-12-30
+"""
+
 import os
 import threading
 import pygame
@@ -8,30 +21,43 @@ import re
 import uuid
 import queue
 import time
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 
-# Constantes de configuración de voz OPTIMIZADAS
+# --- Configuración (Ahora dinámicas) ---
+# Variables globales (pueden cambiar en runtime)
 VOIZ_NEURAL = "es-ES-ElviraNeural" 
-VOICE_RATE = "+10%"  # ⚡ Balance entre velocidad y claridad
-VOICE_VOLUME = "+0%"
-PYGAME_CLOCK_TICK = 20  # ⚡ Más responsivo (antes 10)
-MAX_WORKERS = 3  # ⚡ Generación paralela
+VOICE_RATE = "+10%"      # Velocidad
+VOICE_VOLUME = "+0%"     # Volumen
+PYGAME_CLOCK_TICK = 20   # Ticks del reloj (ms)
+MAX_WORKERS = 3          # Hilos para generación simultánea
 
 class NeuralVoiceEngine:
     def __init__(self):
-        # OPTIMIZACIÓN: 24kHz Mono (Nativo Edge-TTS) para evitar resampling y overhead
-        # Buffer 1024 para evitar crackling pero mantener baja latencia
-        pygame.mixer.init(frequency=24000, size=-16, channels=1, buffer=1024)
+        # OPTIMIZACIÓN CRÍTICA: 
+        # Edge-TTS genera audio a 24kHz. Iniciamos Pygame a la misma frecuencia 
+        # para evitar que la CPU pierda tiempo haciendo resampling interno.
+        try:
+            pygame.mixer.quit() # Asegurar limpieza previa
+            pygame.mixer.init(frequency=24000, size=-16, channels=1, buffer=1024)
+        except Exception as e:
+            logging.error(f"Error iniciando mixer: {e}")
+            
         self.cola_audio = queue.Queue()
         self.stop_event = threading.Event()
         self.is_speaking = False
+        
+        # 🚀 MEJORA 1: Sistema de Caché Inteligente
+        self.cache_dir = os.path.join(os.getcwd(), "sara_voice_cache")
+        os.makedirs(self.cache_dir, exist_ok=True)
+        logging.info(f"📁 Caché de voz: {self.cache_dir}")
         self.executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
         
-        # Limpiar basura anterior
+        # Limpieza inicial de archivos basura
         self._limpiar_temporales()
 
     def _limpiar_temporales(self):
-        """Elimina archivos de audio viejos al inicio"""
+        """Elimina archivos de audio viejos al inicio para no llenar el disco."""
         try:
             for file in os.listdir():
                 if file.startswith("tts_") and file.endswith(".mp3"):
@@ -39,82 +65,89 @@ class NeuralVoiceEngine:
                         os.remove(file)
                     except: pass
         except Exception as e:
-            logging.error(f"Error limpieza: {e}")
+            logging.error(f"Error limpieza inicial: {e}")
 
     def _limpiar_texto(self, texto):
-        """Prepara el texto para ser leído naturalmente."""
+        """Limpia y normaliza el texto para mejorar la pronunciación."""
+        if not texto: return ""
+        
         reemplazos = {
-            "►": "", "↑": " subida ", "↓": " bajada ", "@": " a ", "%": " por ciento ",
-            "GB": " Gigas ", "MB": " Megas ", "Mhz": " Megahertz ",
-            "✅": "", "❌": "", "⚠": "", "💡": "", "📂": "", "🔴": "", "🟢": ""
+            "►": "", "↑": " subida ", "↓": " bajada ", "@": " arroba ", "%": " por ciento ",
+            "GB": " Gigas ", "MB": " Megas ", "GHz": " Gigahertz ", "MHz": " Megahertz ",
+            "✅": "", "❌": "", "⚠️": "", "💡": "", "📂": "", "🔴": "", "🟢": "",
+            "\n": " " # Eliminar saltos de línea para no cortar frases
         }
+        
         for k, v in reemplazos.items(): 
             texto = texto.replace(k, v)
         
-        # Limpiar caracteres especiales manteniendo acentos y puntuación útil
-        # Permitimos: Letras (incluidos acentos), Números, y signos de puntuación básicos
+        # Regex permitiendo caracteres latinos extendidos (áéíóúñÜ¿¡)
+        # Se eliminan símbolos raros que la IA podría intentar leer literalmente
         texto_limpio = re.sub(r'[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s,.\¿\?¡\!\-\(\)\"\']', '', texto)
+        
+        # Eliminar espacios dobles resultantes
         return re.sub(r'\s+', ' ', texto_limpio).strip()
 
-    async def _generar_chunk_async(self, texto, filename):
-        """Genera audio de forma asíncrona"""
-        try:
-            communicate = edge_tts.Communicate(
-                texto, 
-                VOIZ_NEURAL, 
-                rate=VOICE_RATE,
-                volume=VOICE_VOLUME
-            )
-            await communicate.save(filename)
-            return True
-        except Exception as e:
-            logging.error(f"Error TTS: {e}")
-            return False
+    def _get_cache_filename(self, texto):
+        """🚀 MEJORA 1: Genera nombre único para caché basado en texto + config."""
+        unique_str = f"{texto}_{VOIZ_NEURAL}_{VOICE_RATE}"
+        hash_name = hashlib.md5(unique_str.encode()).hexdigest()
+        return os.path.join(self.cache_dir, f"{hash_name}.mp3")
 
     def _generar_chunk_sync(self, texto, filename):
-        """Wrapper síncrono para generación"""
+        """
+        Wrapper síncrono para ejecutar la corutina async de edge-tts.
+        Se ejecuta dentro de un hilo del ThreadPoolExecutor.
+        """
         try:
+            # Creamos un nuevo loop para este hilo si es necesario
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
             communicate = edge_tts.Communicate(
                 texto, 
                 VOIZ_NEURAL, 
-                rate=VOICE_RATE,
+                rate=VOICE_RATE, 
                 volume=VOICE_VOLUME
             )
-            # Solución: Usar asyncio.run que maneja el loop correctamente en threads
-            asyncio.run(communicate.save(filename))
+            
+            # Ejecutamos la corutina hasta completarse
+            loop.run_until_complete(communicate.save(filename))
+            loop.close()
             return True
         except Exception as e:
-            logging.error(f"Error TTS sync: {e}")
-            return False
+            logging.error(f"⚠️ Error Edge-TTS: {e}. Intentando modo Offline...")
+            return self._fallback_offline(texto, filename)
+
+    def _fallback_offline(self, texto, filename):
+        """🚀 MEJORA 3: Fallback offline usando pyttsx3 si falla internet."""
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            engine.save_to_file(texto, filename)
+            engine.runAndWait()
+            logging.info("✅ Audio generado en modo offline")
+            return True
         except Exception as e:
-            logging.error(f"Error TTS sync: {e}")
+            logging.error(f"❌ Fallback offline también falló: {e}")
             return False
 
     def hablar(self, texto):
-        """Habla el texto con latencia mínima"""
-        if not texto: 
-            return
+        """Punto de entrada principal. Gestiona la interrupción y nueva cola."""
+        if not texto: return
         
-        # Detener audio anterior inmediatamente
-        self.stop_event.set()
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.stop()
-        
-        # Limpiar cola
-        while not self.cola_audio.empty():
-            try:
-                filename = self.cola_audio.get_nowait()
-                if filename:
-                    self._safe_remove(filename)
-            except queue.Empty:
-                break
-
+        # 1. Detener lo que se esté diciendo ahora mismo (Interrupt)
+        self.detener()
         self.stop_event.clear()
+        
+        # 2. Limpiar cola de archivos pendientes anteriores
+        with self.cola_audio.mutex:
+            self.cola_audio.queue.clear()
+        
         self.is_speaking = True
-
         texto_limpio = self._limpiar_texto(texto)
         
-        # ⚡ Iniciar pipeline optimizado
+        # 3. Lanzar hilos de Producción (TTS) y Consumo (Play)
         t_gen = threading.Thread(
             target=self._hilo_productor_paralelo, 
             args=(texto_limpio,), 
@@ -128,109 +161,146 @@ class NeuralVoiceEngine:
         t_play.start()
 
     def _hilo_productor_paralelo(self, texto_completo):
-        """Genera audio en paralelo para múltiples frases"""
-        # Dividir en frases más pequeñas para inicio más rápido
+        """
+        Estrategia de Streaming:
+        1. Genera la primera frase YA y la envía a reproducir.
+        2. Manda el resto a generar en segundo plano mientras suena la primera.
+        Esto reduce la latencia percibida a casi cero.
+        """
+        # Dividir por signos de puntuación fuertes (. ! ?)
         frases = re.split(r'(?<=[.!?])\s+', texto_completo)
-        
-        # Filtrar frases vacías
         frases = [f.strip() for f in frases if f.strip()]
         
         if not frases:
             self.cola_audio.put(None)
             return
         
-        # ⚡ Generar primera frase inmediatamente (sin esperar)
+        # --- FASE 1: Generación Inmediata (Latencia mínima) ---
         primera_frase = frases[0]
-        filename_0 = f"tts_{uuid.uuid4().hex[:8]}.mp3"
         
-        if self._generar_chunk_sync(primera_frase, filename_0):
-            self.cola_audio.put(filename_0)
+        # 🚀 MEJORA 1: Revisar Caché antes de generar
+        cache_file = self._get_cache_filename(primera_frase)
         
-        # ⚡ Generar resto en paralelo (Optimizado con futures_map)
+        if os.path.exists(cache_file):
+            # Si existe en caché, latencia = 0ms
+            logging.debug(f"⚡ Cache HIT: {primera_frase[:30]}...")
+            self.cola_audio.put(cache_file)
+        else:
+            # Si no existe, generar y guardar en caché
+            if self._generar_chunk_sync(primera_frase, cache_file):
+                self.cola_audio.put(cache_file)
+        
+        if self.stop_event.is_set(): return
+
+        # --- FASE 2: Generación en Paralelo (Batch) ---
         if len(frases) > 1:
             futures_map = {}
-            orden_futures = [] # Para mantener el orden de reproducción
+            orden_futures = [] 
 
+            # Lanzar tareas al pool
             for frase in frases[1:]:
                 if self.stop_event.is_set(): break
                 
-                filename = f"tts_{uuid.uuid4().hex[:8]}.mp3"
-                future = self.executor.submit(self._generar_chunk_sync, frase, filename)
+                # 🚀 MEJORA 1: Usar caché para cada frase
+                cache_file = self._get_cache_filename(frase)
                 
-                futures_map[future] = filename
-                orden_futures.append(future)
+                if os.path.exists(cache_file):
+                    # Ya existe, agregar directo a la cola
+                    self.cola_audio.put(cache_file)
+                else:
+                    # No existe, generar en paralelo
+                    future = self.executor.submit(self._generar_chunk_sync, frase, cache_file)
+                    futures_map[future] = cache_file
+                    orden_futures.append(future)
             
-            # Recolectar resultados en ORDEN
+            # Recoger resultados EN ORDEN para mantener coherencia del habla
             for future in orden_futures:
                 if self.stop_event.is_set(): break
                 try:
-                    # Esperar a que este chunk específico esté listo
-                    if future.result(timeout=15): 
+                    # Esperamos el resultado (el audio se genera mientras suena el anterior)
+                    if future.result(timeout=20): 
                         filename = futures_map[future]
                         self.cola_audio.put(filename)
                 except Exception as e:
-                    logging.error(f"Error en futuro TTS: {e}")
+                    logging.error(f"Error esperando futuro TTS: {e}")
         
-        self.cola_audio.put(None)  # Señal de fin
+        self.cola_audio.put(None) # Señal de fin de transmisión
 
     def _hilo_consumidor(self):
-        """Reproduce audio de la cola"""
+        """Consume la cola y reproduce los audios secuencialmente."""
         while not self.stop_event.is_set():
             try:
-                filename = self.cola_audio.get(timeout=0.5)
+                # Timeout corto para revisar stop_event frecuentemente
+                filename = self.cola_audio.get(timeout=0.2)
                 
-                if filename is None:  # Fin
+                if filename is None: # Señal de fin recibida
                     break
                 
-                # Reproducir inmediatamente
-                try:
-                    pygame.mixer.music.load(filename)
-                    pygame.mixer.music.play()
+                # --- Reproducción ---
+                if os.path.exists(filename):
+                    try:
+                        pygame.mixer.music.load(filename)
+                        pygame.mixer.music.play()
+                        
+                        while pygame.mixer.music.get_busy() and not self.stop_event.is_set():
+                            pygame.time.Clock().tick(PYGAME_CLOCK_TICK)
+                            
+                        # CRÍTICO: Descargar archivo para liberar el lock de Windows
+                        pygame.mixer.music.unload()
+                    except Exception as e:
+                        logging.error(f"Error reproduciendo {filename}: {e}")
                     
-                    # Esperar a que termine
-                    while pygame.mixer.music.get_busy() and not self.stop_event.is_set():
-                        pygame.time.Clock().tick(PYGAME_CLOCK_TICK)
-                    
-                    pygame.mixer.music.unload() # CRÍTICO: Liberar archivo para poder borrarlo en Windows
-                except Exception as e:
-                    logging.error(f"Error reproducción: {e}")
+                    # 🚀 MEJORA 1: Solo borrar si NO está en caché
+                    if self.cache_dir not in os.path.abspath(filename):
+                        self._safe_remove(filename)
                 
-                # Limpiar archivo con reintentos (Fix Windows File Lock)
-                self._safe_remove(filename)
-                    
             except queue.Empty:
                 continue
             except Exception as e:
-                logging.error(f"Error consumidor: {e}")
+                logging.error(f"Error fatal en consumidor: {e}")
+                break
         
         self.is_speaking = False
 
     def _safe_remove(self, path):
-        """Intenta borrar un archivo con reintentos para evitar errores de bloqueo"""
+        """Intenta borrar archivo manejando el 'File in use' de Windows."""
         if not path or not os.path.exists(path): return
         
-        for i in range(5): # 5 intentos
+        for _ in range(10): # Aumentado a 10 intentos
             try:
                 os.remove(path)
-                return
+                break
             except PermissionError:
-                time.sleep(0.1) # Esperar un poco
-            except Exception as e:
-                logging.debug(f"Error borrando {path}: {e}")
-                return
+                time.sleep(0.1)
+            except Exception:
+                break
 
     def detener(self):
-        """Detiene la reproducción inmediatamente"""
+        """Fuerza la detención del habla."""
         self.stop_event.set()
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.stop()
+        try:
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+        except: pass
         self.is_speaking = False
 
-    def esta_hablando(self):
-        """Verifica si está hablando"""
-        return self.is_speaking or pygame.mixer.music.get_busy()
-    
+    def cambiar_voz(self, nueva_voz="es-MX-DaliaNeural", velocidad="+0%"):
+        """🚀 MEJORA 2: Cambiar voz en tiempo real sin reiniciar.
+        
+        Voces disponibles:
+        - es-ES-ElviraNeural (Española, seria)
+        - es-MX-DaliaNeural (Mexicana, suave)
+        - es-MX-JorgeNeural (Mexicano, hombre)
+        - es-AR-ElenaNeural (Argentina)
+        """
+        global VOIZ_NEURAL, VOICE_RATE
+        VOIZ_NEURAL = nueva_voz
+        VOICE_RATE = velocidad
+        logging.info(f"🔄 Voz cambiada a: {nueva_voz} (velocidad: {velocidad})")
+        return f"Voz cambiada a {nueva_voz}"
+
     def __del__(self):
-        """Limpieza al destruir"""
         self.detener()
         self.executor.shutdown(wait=False)
+        pygame.mixer.quit()

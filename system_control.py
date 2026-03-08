@@ -1,278 +1,285 @@
+"""
+🖥️ SARA - System Control Module (Secure & Robust)
+=================================================
+Control avanzado del sistema operativo Windows.
+Mejoras:
+- Uso de psutil para gestión de procesos (más rápido y seguro que taskkill).
+- Ejecución de comandos sin shell=True (evita inyección).
+- Manejo de errores granular.
+"""
+
+import os
 import logging
-import math
-from ctypes import cast, POINTER
-from comtypes import CLSCTX_ALL
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-import screen_brightness_control as sbc
-import pyautogui
+import subprocess
+import ctypes
+from ctypes import cast, POINTER, wintypes
+from pathlib import Path
+from datetime import datetime
+from typing import Optional, Union
+
+# Configuración de Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - SYSTEM - %(levelname)s - %(message)s')
+logger = logging.getLogger("SYSTEM")
+
+# Importaciones de terceros con flags de estado
+LIBRARIES_OK = True
+try:
+    import psutil
+    import pyautogui
+    import screen_brightness_control as sbc
+    from comtypes import CLSCTX_ALL
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+except ImportError as e:
+    logger.critical(f"❌ Faltan librerías necesarias: {e}")
+    LIBRARIES_OK = False
+
+# Constantes de Windows
+SC_MONITORPOWER = 0xF170
+WM_SYSCOMMAND = 0x0112
+MONITOR_OFF = 2
+WM_CLOSE = 0x0010
 
 class SystemControl:
     def __init__(self):
+        if not LIBRARIES_OK:
+            logger.warning("⚠️ SystemControl operando en modo limitado (faltan librerías).")
+        
         self.volume = self._get_volume_interface()
+        self.base_dir = Path(__file__).parent.absolute()
 
     def _get_volume_interface(self):
+        """Inicializa la interfaz de audio de Windows."""
+        if not LIBRARIES_OK: return None
         try:
             device = AudioUtilities.GetSpeakers()
-            # Newer pycaw versions expose EndpointVolume directly
             if hasattr(device, 'EndpointVolume'):
                 return device.EndpointVolume
-                
-            # Fallback for older (standard) usage if needed
-            interface = device.Activate(
-                IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            interface = device.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
             return cast(interface, POINTER(IAudioEndpointVolume))
         except Exception as e:
-            logging.error(f"Error initializing audio interface: {e}")
+            logger.error(f"Error audio interface: {e}")
             return None
 
-    def set_volume(self, level: int):
-        """Sets the master volume to a specific percentage (0-100)."""
-        if not self.volume: return "Error: Audio interface not available."
-        
-        # Ensure level is between 0 and 100
-        level = max(0, min(100, level))
-        
+    # ==========================================
+    # AUDIO Y BRILLO
+    # ==========================================
+
+    def set_volume(self, level: int) -> str:
+        if not self.volume: return "Error: Audio no disponible."
         try:
-            # Pycaw uses scalar 0.0 to 1.0
+            level = max(0, min(100, level))
             scalar = level / 100.0
             self.volume.SetMasterVolumeLevelScalar(scalar, None)
-            return f"Volumen ajustado al {level}%."
+            return f"🔊 Volumen ajustado al {level}%."
         except Exception as e:
-            return f"Error ajustando volumen: {e}"
+            return f"❌ Error volumen: {e}"
 
-    def get_volume(self):
-        """Gets current volume percentage."""
+    def get_volume(self) -> int:
         if not self.volume: return 0
         try:
-            scalar = self.volume.GetMasterVolumeLevelScalar()
-            return int(scalar * 100)
+            return int(self.volume.GetMasterVolumeLevelScalar() * 100)
         except: return 0
 
-    def adjust_volume(self, change: int):
-        """Increases or decreases volume by a relative amount."""
+    def adjust_volume(self, change: int) -> str:
         current = self.get_volume()
-        new_level = current + change
-        return self.set_volume(new_level)
+        return self.set_volume(current + change)
 
-    def mute_volume(self):
-        """Toggles mute."""
-        if not self.volume: return "Error: Audio interface not available."
+    def mute_volume(self) -> str:
+        if not self.volume: return "Error: Audio no disponible."
         try:
             current_mute = self.volume.GetMute()
             self.volume.SetMute(not current_mute, None)
             state = "desactivado" if current_mute else "activado"
-            return f"Silencio {state}."
+            return f"🔇 Silencio {state}."
         except Exception as e:
-            return f"Error muteando: {e}"
+            return f"❌ Error mute: {e}"
 
-    def set_brightness(self, level: int):
-        """Sets screen brightness (0-100)."""
+    def set_brightness(self, level: int) -> str:
+        if not LIBRARIES_OK: return "Librería sbc no instalada."
         try:
             level = max(0, min(100, level))
             sbc.set_brightness(level)
-            return f"Brillo ajustado al {level}%."
+            return f"☀️ Brillo ajustado al {level}%."
         except Exception as e:
-            logging.error(f"Error brightness: {e}")
-            return "No pude ajustar el brillo (quizás no es un monitor compatible o laptop)."
+            logger.error(f"Error brillo: {e}")
+            return "No pude ajustar el brillo (quizás no es monitor compatible)."
 
-    def media_play_pause(self):
-        pyautogui.press('playpause')
-        return "Media: Play/Pause"
+    # ==========================================
+    # CONTROLES DE MEDIOS Y PANTALLA
+    # ==========================================
 
-    def media_next(self):
-        pyautogui.press('nexttrack')
-        return "Media: Siguiente"
+    def media_play_pause(self) -> str:
+        if LIBRARIES_OK: pyautogui.press('playpause')
+        return "⏯️ Media: Play/Pause"
 
-    def media_prev(self):
-        pyautogui.press('prevtrack')
-        return "Media: Anterior"
+    def media_next(self) -> str:
+        if LIBRARIES_OK: pyautogui.press('nexttrack')
+        return "⏭️ Media: Siguiente"
 
-    def lock_screen(self):
-        import os
-        os.system("rundll32.exe user32.dll,LockWorkStation")
-        return "Pantalla bloqueada"
+    def media_prev(self) -> str:
+        if LIBRARIES_OK: pyautogui.press('prevtrack')
+        return "⏮️ Media: Anterior"
 
-    def turn_off_screen(self):
-        """Turns off the monitor (using PowerShell/SendMessage)."""
-        # This is a bit hacky but works on most Windows systems
-        import ctypes
+    def lock_screen(self) -> str:
         try:
-            SC_MONITORPOWER = 0xF170
-            win32con_WM_SYSCOMMAND = 0x0112 
-            mon_off = 2
+            ctypes.windll.user32.LockWorkStation()
+            return "🔒 Pantalla bloqueada"
+        except Exception as e:
+            return f"❌ Error bloqueo: {e}"
+
+    def turn_off_screen(self) -> str:
+        try:
+            # Pequeño delay para que no se despierte al soltar teclas
+            import time
+            time.sleep(0.5) 
             ctypes.windll.user32.SendMessageW(
                 ctypes.windll.user32.GetForegroundWindow(),
-                win32con_WM_SYSCOMMAND,
-                SC_MONITORPOWER,
-                mon_off
+                WM_SYSCOMMAND, SC_MONITORPOWER, MONITOR_OFF
             )
-            return "Apagando pantalla..."
+            return "🌑 Apagando pantalla..."
         except Exception as e:
-            return f"Error apagando pantalla: {e}"
+            return f"❌ Error apagando pantalla: {e}"
 
     # ==========================================
-    # NUEVAS FUNCIONES DE GESTIÓN (MÚSCULOS 💪)
+    # GESTIÓN DE PROCESOS (OPTIMIZADO CON PSUTIL)
     # ==========================================
 
-    def kill_process(self, process_name: str):
-        """Mata un proceso por su nombre."""
-        import subprocess
-        # Añadir .exe si falta y no es un nombre salvaje
-        if not process_name.endswith(".exe"):
-            process_name += ".exe"
-            
+    def kill_process(self, process_name: str) -> str:
+        """Mata un proceso de forma nativa y segura."""
+        if not LIBRARIES_OK: return "Falta librería psutil."
+        
+        # Limpieza nombre (quitar .exe si usuario lo puso)
+        target = process_name.lower().replace(".exe", "")
+        killed_count = 0
+        
         try:
-            # /F = Force, /IM = Image Name
-            result = subprocess.run(
-                f"taskkill /F /IM {process_name}", 
-                capture_output=True, text=True, shell=True
-            )
+            for proc in psutil.process_iter(['name']):
+                try:
+                    # Comparación flexible
+                    if target in proc.info['name'].lower():
+                        proc.kill()
+                        killed_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
             
-            if "SUCCESS" in result.stdout or "ÉXITO" in result.stdout:
-                return f"✅ Proceso {process_name} eliminado."
-            elif "not found" in result.stderr or "no encontrado" in result.stderr:
-                return f"⚠️ No encontré el proceso {process_name}."
-            else:
-                return f"❌ Error eliminando {process_name}: {result.stderr.strip()}"
+            if killed_count > 0:
+                return f"✅ Se terminaron {killed_count} procesos '{target}'."
+            return f"⚠️ No encontré procesos activos con el nombre '{target}'."
+            
         except Exception as e:
-            return f"❌ Error ejecutando taskkill: {e}"
+            return f"❌ Error matando proceso: {e}"
 
-    def minimize_all_windows(self):
-        """Minimiza todas las ventanas (Muestra Escritorio)."""
-        # Win + D funciona como toggle
-        pyautogui.hotkey('win', 'd')
-        return "🖥️ Escritorio mostrado (Minimizar todo)."
+    def get_heavy_processes(self, limit: int = 5) -> str:
+        """Top procesos consumidores de RAM."""
+        if not LIBRARIES_OK: return "Falta psutil."
+        try:
+            procs = []
+            for p in psutil.process_iter(['name', 'memory_info']):
+                try:
+                    mem = p.info['memory_info']
+                    if mem:
+                        procs.append({
+                            'name': p.info['name'],
+                            'rss': mem.rss
+                        })
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            # Ordenar por uso de RAM (RSS)
+            procs.sort(key=lambda x: x['rss'], reverse=True)
+            
+            reporte = "🚨 TOP CONSUMO RAM:\n"
+            for p in procs[:limit]:
+                mb = round(p['rss'] / (1024 * 1024), 1)
+                reporte += f"• {p['name']}: {mb} MB\n"
+            return reporte
+            
+        except Exception as e:
+            return f"❌ Error leyendo procesos: {e}"
 
-    def maximize_window(self):
-        """Maximiza la ventana actual."""
-        pyautogui.hotkey('win', 'up')
+    # ==========================================
+    # SISTEMA (SEGURO SIN SHELL=TRUE)
+    # ==========================================
+
+    def shutdown_system(self, minutes: int = 0) -> str:
+        """Apagado seguro."""
+        seconds = str(int(minutes * 60))
+        try:
+            # shell=False evita inyección de comandos
+            subprocess.run(["shutdown", "/s", "/t", seconds], shell=False)
+            
+            if minutes > 0:
+                return f"🕒 Apagado programado en {minutes} min."
+            return "👋 Apagando sistema..."
+        except Exception as e:
+            return f"❌ Error shutdown: {e}"
+
+    def restart_system(self, minutes: int = 0) -> str:
+        """Reinicio seguro."""
+        seconds = str(int(minutes * 60))
+        try:
+            subprocess.run(["shutdown", "/r", "/t", seconds], shell=False)
+            
+            if minutes > 0:
+                return f"🔄 Reinicio programado en {minutes} min."
+            return "🔄 Reiniciando..."
+        except Exception as e:
+            return f"❌ Error restart: {e}"
+
+    def cancel_shutdown(self) -> str:
+        try:
+            subprocess.run(["shutdown", "/a"], shell=False)
+            return "✅ Apagado cancelado."
+        except:
+            return "ℹ️ No había temporizador."
+
+    def empty_recycle_bin(self) -> str:
+        try:
+            SHEmptyRecycleBin = ctypes.windll.shell32.SHEmptyRecycleBinW
+            # Flags: 1=NoConfirm, 2=NoProgress, 4=NoSound
+            result = SHEmptyRecycleBin(None, None, 7)
+            if result == 0: return "🗑️ Papelera vaciada."
+            if result == -2147418113: return "ℹ️ Ya estaba vacía."
+            return f"⚠️ Código error: {result}"
+        except Exception as e:
+            return f"❌ Error papelera: {e}"
+
+    def minimize_all_windows(self) -> str:
+        if LIBRARIES_OK: pyautogui.hotkey('win', 'd')
+        return "🖥️ Escritorio."
+
+    def maximize_window(self) -> str:
+        if LIBRARIES_OK: pyautogui.hotkey('win', 'up')
         return "Ventana maximizada."
 
-    def shutdown_system(self, minutes: int = 0):
-        """Apaga el sistema tras N minutos."""
-        import subprocess
-        seconds = minutes * 60
-        try:
-            subprocess.run(f"shutdown /s /t {seconds}", shell=True)
-            if minutes > 0:
-                return f"🕒 Apagado programado en {minutes} minutos."
-            return "👋 Apagando sistema ahora..."
-        except Exception as e:
-            return f"❌ Error al apagar: {e}"
-
-    def restart_system(self, minutes: int = 0):
-        """Reinicia el sistema tras N minutos."""
-        import subprocess
-        seconds = minutes * 60
-        try:
-            subprocess.run(f"shutdown /r /t {seconds}", shell=True)
-            if minutes > 0:
-                return f"🔄 Reinicio programado en {minutes} minutos."
-            return "🔄 Reiniciando sistema ahora..."
-        except Exception as e:
-            return f"❌ Error al reiniciar: {e}"
-
-    def cancel_shutdown(self):
-        """Cancela cualquier apagado/reinicio programado."""
-        import subprocess
-        try:
-            subprocess.run("shutdown /a", shell=True)
-            return "✅ Apagado/Reinicio cancelado."
-        except:
-            return "ℹ️ No había apagado programado."
-
-    def empty_recycle_bin(self):
-        """Vacía la papelera de reciclaje (Requiere ctypes)."""
-        import ctypes
-        try:
-            # SHEmptyRecycleBinW(hwnd, root_path, flags)
-            # Flags: 1=NoConfirm, 2=NoProgress, 4=NoSound
-            SHEmptyRecycleBin = ctypes.windll.shell32.SHEmptyRecycleBinW
-            result = SHEmptyRecycleBin(None, None, 7) 
-            if result == 0:
-                return "🗑️ Papelera vaciada con éxito."
-            elif result == -2147418113: # E_UNEXPECTED (A veces pasa si ya está vacía)
-                 return "ℹ️ La papelera ya estaba vacía."
-            else:
-                return f"⚠️ Código de resultado: {result}"
-        except Exception as e:
-            return f"❌ Error vaciando papelera: {e}"
-
-    def take_screenshot(self, folder_path="screenshots"):
-        """Toma una captura de pantalla y la guarda con timestamp."""
-        import os
-        from datetime import datetime
-        
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-            
-        filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        filepath = os.path.join(folder_path, filename)
-        
-        try:
-            pyautogui.screenshot(filepath)
-            return f"📸 Captura guardada en: {filename}"
-        except Exception as e:
-            return f"❌ Error al tomar captura: {e}"
-
-    def clean_temp_files(self):
-        """Limpia archivos temporales del sistema (%TEMP%)."""
-        import os
-        import shutil
-        
+    def clean_temp_files(self) -> str:
+        """Limpieza de temporales optimizada."""
         temp_dir = os.environ.get('TEMP')
-        if not temp_dir: return "❌ No encontré la carpeta TEMP."
+        if not temp_dir: return "❌ No existe variable TEMP."
         
         deleted_files = 0
         deleted_size = 0
         
         try:
-            for root, dirs, files in os.walk(temp_dir):
-                for f in files:
-                    try:
-                        fp = os.path.join(root, f)
-                        size = os.path.getsize(fp)
-                        os.remove(fp)
-                        deleted_files += 1
-                        deleted_size += size
-                    except: pass # Archivo en uso
-                    
-            mb_freed = round(deleted_size / (1024*1024), 2)
-            return f"🧹 Limpieza completada. {deleted_files} archivos borrados ({mb_freed} MB liberados)."
-        except Exception as e:
-            return f"❌ Error en limpieza: {e}"
-
-    def get_heavy_processes(self, limit=5):
-        """Devuelve los procesos que más RAM consumen."""
-        try:
-            import psutil
-            # Obtener lista con detalles
-            procs = []
-            for p in psutil.process_iter(['name', 'memory_info']):
-                try:
-                    procs.append(p.info)
-                except: pass
-                
-            # Ordenar por memoria (RSS)
-            procs.sort(key=lambda p: p['memory_info'].rss, reverse=True)
+            with os.scandir(temp_dir) as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        try:
+                            size = entry.stat().st_size
+                            os.remove(entry.path)
+                            deleted_files += 1
+                            deleted_size += size
+                        except (PermissionError, OSError):
+                            continue # Archivo en uso, ignorar
             
-            top = procs[:limit]
-            reporte = "🚨 TOP PROCESOS (RAM):\n"
-            for p in top:
-                mem_mb = round(p['memory_info'].rss / (1024*1024), 1)
-                reporte += f"• {p['name']}: {mem_mb} MB\n"
-                
-            return reporte
+            mb = round(deleted_size / (1024*1024), 2)
+            return f"🧹 Limpieza: {deleted_files} archivos ({mb} MB)."
         except Exception as e:
-            return f"❌ Error leyendo procesos: {e}"
-    def close_window_by_title(self, partial_title: str):
-        """Cierra ventanas que contengan partial_title en su título."""
-        import ctypes
-        from ctypes import wintypes
-        
+            return f"❌ Error limpieza: {e}"
+
+    def close_window_by_title(self, partial_title: str) -> str:
+        """Cierra ventanas por título (WinAPI)."""
         user32 = ctypes.windll.user32
-        WM_CLOSE = 0x0010
-        
         found_count = 0
         
         def check_window(hwnd, _):
@@ -282,10 +289,7 @@ class SystemControl:
                 buff = ctypes.create_unicode_buffer(length + 1)
                 user32.GetWindowTextW(hwnd, buff, length + 1)
                 title = buff.value
-                
-                # Check visible windows only to avoid background processes
                 if user32.IsWindowVisible(hwnd) and partial_title.lower() in title.lower():
-                    # Enviar señal de cierre
                     user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
                     found_count += 1
             return True
@@ -294,28 +298,111 @@ class SystemControl:
         user32.EnumWindows(WNDENUMPROC(check_window), 0)
         
         if found_count > 0:
-            return f"✅ Cerrada(s) {found_count} ventana(s) con '{partial_title}'."
-        else:
-            return f"ℹ️ No encontré ventanas con '{partial_title}'."
-    
-    def deep_clean_system(self):
-        """Limpieza profunda del sistema usando script BAT optimizado"""
-        import subprocess
-        import os
-        
-        script_path = os.path.join(os.path.dirname(__file__), "scripts", "cleanup_system.bat")
-        
-        if not os.path.exists(script_path):
-            return "❌ Script de limpieza no encontrado"
-        
-        try:
-            # Ejecutar script BAT (mucho más rápido que Python)
-            result = subprocess.run(script_path, capture_output=True, text=True, shell=True)
-            
-            if result.returncode == 0:
-                return "✅ Limpieza profunda completada\n🗑️ Temporales, papelera y cache eliminados"
-            else:
-                return f"⚠️ Limpieza completada con advertencias"
-        except Exception as e:
-            return f"❌ Error en limpieza: {e}"
+            return f"✅ Cerradas {found_count} ventanas con '{partial_title}'."
+        return f"ℹ️ No encontré ventanas '{partial_title}'."
 
+    # ==========================================
+    # DIAGNÓSTICO DE RED
+    # ==========================================
+
+    def get_network_status(self) -> str:
+        """Diagnóstico completo de red: conexión, IP, latencia y tipo."""
+        try:
+            import socket
+            import time
+            
+            # 1. Obtener información local
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            
+            # 2. Verificar Internet con ping a Google DNS (8.8.8.8)
+            param = '-n' if os.name == 'nt' else '-c'
+            start_time = time.time()
+            
+            response = subprocess.call(
+                ['ping', param, '1', '8.8.8.8'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                shell=False
+            )
+            
+            latency_ms = int((time.time() - start_time) * 1000)
+            
+            # 3. Determinar estado de conexión
+            if response == 0:
+                # Evaluar calidad de latencia
+                if latency_ms < 50:
+                    status = "✅ Excelente"
+                    quality = "🟢"
+                elif latency_ms < 150:
+                    status = "✅ Buena"
+                    quality = "🟡"
+                elif latency_ms < 300:
+                    status = "⚠️ Lenta"
+                    quality = "🟠"
+                else:
+                    status = "⚠️ Muy Lenta"
+                    quality = "🔴"
+                
+                return f"{quality} {status} ({latency_ms}ms) | IP: {local_ip} | Host: {hostname}"
+            else:
+                return f"❌ Sin Internet | IP Local: {local_ip} | Host: {hostname}"
+                
+        except Exception as e:
+            logger.error(f"Error diagnóstico de red: {e}")
+            return f"❌ Error de red: {e}"
+
+    def get_network_latency(self) -> Optional[int]:
+        """
+        Retorna latencia en ms (para uso interno).
+        Útil para que brain.py detecte si un error fue por red lenta.
+        """
+        try:
+            import time
+            param = '-n' if os.name == 'nt' else '-c'
+            start = time.time()
+            
+            response = subprocess.call(
+                ['ping', param, '1', '8.8.8.8'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                shell=False
+            )
+            
+            if response == 0:
+                return int((time.time() - start) * 1000)
+            return None  # Sin conexión
+        except:
+            return None
+
+    def check_internet(self) -> bool:
+        """Verificación rápida de Internet (True/False)."""
+        try:
+            param = '-n' if os.name == 'nt' else '-c'
+            response = subprocess.call(
+                ['ping', param, '1', '8.8.8.8'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                shell=False,
+                timeout=5
+            )
+            return response == 0
+        except:
+            return False
+
+# --- PRUEBAS ---
+if __name__ == "__main__":
+    sys = SystemControl()
+    print("--- TEST SYSTEM CONTROL ---\n")
+    
+    # Test diagnóstico de red
+    print("📡 DIAGNÓSTICO DE RED:")
+    print(sys.get_network_status())
+    print()
+    
+    # Test procesos pesados
+    print(sys.get_heavy_processes(3))
+    
+    # Otros tests (comentados)
+    # print(sys.set_volume(20))
+    # print(sys.clean_temp_files())

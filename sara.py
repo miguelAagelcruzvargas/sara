@@ -1,13 +1,17 @@
 import customtkinter as ctk
 import speech_recognition as sr
 import threading
-import datetime
+import datetime 
 import logging
 import logging
 import time
 import ctypes # Para controlar energía
-import cv2
+
 import os
+import difflib  # Para fuzzy matching de wake words
+import math  # Para animaciones de ondas
+import pyaudio  # Para captura de audio en tiempo real
+import struct  # Para procesar datos de audio
 
 
 # Configuración de Logs
@@ -35,10 +39,14 @@ class SaraUltimateGUI(ctk.CTk):
         self.brain = SaraBrain()
         
         self.is_listening = False
+        self.visualizer_running = False
+        self.audio_level = 0  # Nivel de audio actual (0-100)
+        self.audio_stream = None  # Stream de PyAudio
 
-        # Configuración Ventana (COMPACTA)
+        # Configuración Ventana (COMPACTA Y MODERNA)
         self.title(f"S.A.R.A. {VERSION}")
-        self.geometry("550x500")  # Casi cuadrada y más ancha
+        self.geometry("480x420")  # Más compacta pero elegante
+        self.minsize(450, 380)  # Tamaño mínimo
         ctk.set_appearance_mode("Dark")
         
         # Colores modernos
@@ -53,7 +61,6 @@ class SaraUltimateGUI(ctk.CTk):
         # --- TABVIEW (Pestañas Modernas) ---
         self.tabview = ctk.CTkTabview(
             self, 
-            # width eliminado para dejar que pack maneje el ancho
             fg_color=self.COLORS["bg_primary"],
             segmented_button_fg_color=self.COLORS["bg_secondary"],
             segmented_button_selected_color=self.COLORS["accent"],
@@ -61,14 +68,14 @@ class SaraUltimateGUI(ctk.CTk):
             segmented_button_unselected_color=self.COLORS["bg_elevated"],
             segmented_button_unselected_hover_color=self.COLORS["bg_hover"],
             text_color=self.COLORS["text_primary"],
-            corner_radius=12
+            corner_radius=10
         )
-        self.tabview.pack(padx=10, pady=(0, 10), fill="both", expand=True)
+        self.tabview.pack(padx=8, pady=(0, 8), fill="both", expand=True)
         
-        self.tab_chat = self.tabview.add("💬 Chat")
-        self.tab_config = self.tabview.add("⚙️ Config")
-        self.tab_dev = self.tabview.add("🛠️ Dev")
-        self.tab_network = self.tabview.add("🌐 Network")
+        self.tab_chat = self.tabview.add("💬")
+        self.tab_config = self.tabview.add("⚙️")
+        self.tab_dev = self.tabview.add("🛠️")
+        self.tab_network = self.tabview.add("🌐")
 
         # --- PESTAÑAS ---
         self.setup_chat_tab()  
@@ -91,81 +98,98 @@ class SaraUltimateGUI(ctk.CTk):
             self.brain.voz.hablar(saludo)
     
     def _setup_colors(self):
-        """Define la paleta de colores moderna"""
+        """Define la paleta de colores moderna y premium"""
         self.COLORS = {
-            # Principales
-            "accent": "#00D9FF",
+            # Principales (más vibrantes)
+            "accent": "#00E5FF",  # Cyan más brillante
             "accent_hover": "#00B8D4",
-            "secondary": "#7C4DFF",
-            "success": "#00E676",
-            "error": "#FF1744",
-            "warning": "#FFD600",
+            "accent_glow": "#00E5FF40",  # Glow effect
+            "secondary": "#8B5CF6",  # Púrpura más suave
+            "success": "#10B981",  # Verde más moderno
+            "error": "#EF4444",  # Rojo más suave
+            "warning": "#F59E0B",  # Ámbar moderno
             
-            # Fondos
-            "bg_primary": "#0A0E27",
-            "bg_secondary": "#151B3B",
-            "bg_elevated": "#1E2749",
-            "bg_hover": "#252D54",
+            # Fondos (más profundos y elegantes)
+            "bg_primary": "#0F172A",  # Azul muy oscuro (slate-900)
+            "bg_secondary": "#1E293B",  # slate-800
+            "bg_elevated": "#334155",  # slate-700
+            "bg_hover": "#475569",  # slate-600
+            "bg_card": "#1E293B",  # Para tarjetas
             
-            # Textos
-            "text_primary": "#FFFFFF",
-            "text_secondary": "#B0B8D4",
-            "text_disabled": "#6B7599",
+            # Textos (mejor contraste)
+            "text_primary": "#F8FAFC",  # Casi blanco
+            "text_secondary": "#CBD5E1",  # Gris claro
+            "text_disabled": "#64748B",  # Gris medio
+            "text_muted": "#94A3B8",  # Gris suave
         }
     
     def setup_header(self):
-        """Header compacto"""
+        """Header compacto y elegante"""
         header = ctk.CTkFrame(
             self,
-            height=40,
+            height=45,
             fg_color=self.COLORS["bg_secondary"],
             corner_radius=0
         )
         header.pack(fill="x", padx=0, pady=0)
         header.pack_propagate(False)
         
-        # Header simplificado (Solo estado, sin título repetido)
+        # Logo/Título a la izquierda (más elegante)
+        title_frame = ctk.CTkFrame(header, fg_color="transparent")
+        title_frame.pack(side="left", padx=15, pady=8)
+        
+        title_label = ctk.CTkLabel(
+            title_frame,
+            text="SARA",
+            font=("Inter", 16, "bold"),
+            text_color=self.COLORS["accent"]
+        )
+        title_label.pack(side="left", padx=(0, 8))
+        
+        ver_label = ctk.CTkLabel(
+            title_frame,
+            text=f"v{VERSION}",
+            font=("Inter", 9),
+            text_color=self.COLORS["text_muted"]
+        )
+        ver_label.pack(side="left")
+        
+        # Estado a la derecha (más compacto)
+        status_frame = ctk.CTkFrame(header, fg_color="transparent")
+        status_frame.pack(side="right", padx=15, pady=8)
+        
         self.header_status = ctk.CTkLabel(
-            header,
-            text="🟢 SISTEMA ONLINE",
-            font=("Inter", 11, "bold"),
+            status_frame,
+            text="● ONLINE",
+            font=("Inter", 10, "bold"),
             text_color=self.COLORS["success"]
         )
-        self.header_status.pack(side="right", padx=20, pady=10)
-
-        # Versión pequeña discreta a la izquierda
-        ver_label = ctk.CTkLabel(
-            header,
-            text=f"v{VERSION}",
-            font=("Inter", 10),
-            text_color=self.COLORS["text_disabled"]
-        )
-        ver_label.pack(side="left", padx=20, pady=10)
+        self.header_status.pack(side="right")
 
     def setup_chat_tab(self):
-        # Frame principal
+        # Frame principal (más compacto)
         main_frame = ctk.CTkFrame(
             self.tab_chat, 
             fg_color="transparent"
         )
-        main_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        main_frame.pack(fill="both", expand=True, padx=6, pady=6)
 
-        # Área de Chat (más compacta)
+        # Área de Chat (compacta y elegante)
         self.chat = ctk.CTkTextbox(
             main_frame,
             width=350,
-            height=260,
+            height=220,  # Más compacta
             state="disabled",
-            font=("JetBrains Mono", 10),
-            fg_color=self.COLORS["bg_primary"],
+            font=("Segoe UI", 10),  # Fuente más legible
+            fg_color=self.COLORS["bg_card"],
             text_color=self.COLORS["text_primary"],
             border_width=1,
             border_color=self.COLORS["bg_elevated"],
-            corner_radius=10,
+            corner_radius=12,
             scrollbar_button_color=self.COLORS["accent"],
             scrollbar_button_hover_color=self.COLORS["accent_hover"]
         )
-        self.chat.pack(fill="both", expand=True, pady=(0, 10))
+        self.chat.pack(fill="both", expand=True, pady=(0, 8))
         
         # Tags de colores modernos
         tags = {
@@ -178,61 +202,122 @@ class SaraUltimateGUI(ctk.CTk):
         }
         for k, v in tags.items(): 
             self.chat.tag_config(k, foreground=v)
+            
+        # WORKAROUND: CTk forbids font in tag_config. We access the underlying Tkinter Text widget.
+        # This allows us to have bold text.
+        try:
+            self.chat._textbox.tag_config("bold", font=("Segoe UI", 10, "bold"))
+        except Exception as e:
+            print(f"Warning: Could not configure bold font: {e}")
 
-        # Área de Entrada Flotante y Estilizada
+        # Área de Entrada Moderna y Compacta
         input_container = ctk.CTkFrame(
             main_frame, 
-            fg_color=self.COLORS["bg_secondary"],
-            corner_radius=25,
-            height=60
+            fg_color=self.COLORS["bg_card"],
+            corner_radius=16,
+            height=52,
+            border_width=1,
+            border_color=self.COLORS["bg_elevated"]
         )
-        input_container.pack(fill="x", pady=5)
+        input_container.pack(fill="x", pady=(0, 0))
+        input_container.pack_propagate(False)
         
         self.entry = ctk.CTkEntry(
             input_container,
-            placeholder_text="Escribe un mensaje...",
-            height=45,
-            font=("Inter", 13),
+            placeholder_text="Escribe o habla...",
+            height=40,
+            font=("Segoe UI", 11),
             border_width=0,
-            corner_radius=20,
+            corner_radius=12,
             fg_color="transparent",
             text_color=self.COLORS["text_primary"],
-            placeholder_text_color=self.COLORS["text_disabled"]
+            placeholder_text_color=self.COLORS["text_muted"]
         )
-        self.entry.pack(side="left", fill="x", expand=True, padx=15, pady=5)
+        self.entry.pack(side="left", fill="x", expand=True, padx=12, pady=6)
         self.entry.bind("<Return>", self.enviar)
         
-        # Botones de Acción Claros
+        # Botones modernos y elegantes
+        buttons_frame = ctk.CTkFrame(input_container, fg_color="transparent")
+        buttons_frame.pack(side="right", padx=8, pady=6)
         
-        # Botón Voz
-        self.btn_voz = ctk.CTkButton(
-            input_container,
-            text="🎙️",
-            width=45,
-            height=45,
-            command=self.toggle_mic,
-            font=("Segoe UI Emoji", 20), # Fuente mejor para emojis
+        # Botón Adjuntar Archivo (PDF)
+        self.btn_file = ctk.CTkButton(
+            buttons_frame,
+            text="📎",
+            width=42,
+            height=40,
+            command=self.seleccionar_archivo,
+            font=("Segoe UI Emoji", 18),
             fg_color=self.COLORS["bg_elevated"],
-            hover_color=self.COLORS["error"], # Hover rojo para indicar grabación/acción
-            corner_radius=22,
-            text_color=self.COLORS["text_primary"]
+            hover_color=self.COLORS["warning"],
+            corner_radius=12,
+            text_color=self.COLORS["text_primary"],
+            border_width=0
         )
-        self.btn_voz.pack(side="right", padx=(5, 10), pady=5)
+        self.btn_file.pack(side="left", padx=(0, 8))
+        self.btn_file.pack_forget()  # Oculto por defecto, se muestra solo en modo estudio
         
-        # Botón Enviar
-        self.btn_send = ctk.CTkButton(
+        # Botón Voz con indicador visual
+        self.btn_voz = ctk.CTkButton(
+            buttons_frame,
+            text="🎤",
+            width=42,
+            height=40,
+            command=self.toggle_mic,
+            font=("Segoe UI Emoji", 18),
+            fg_color=self.COLORS["bg_elevated"],
+            hover_color=self.COLORS["secondary"],
+            corner_radius=12,
+            text_color=self.COLORS["text_primary"],
+            border_width=0
+        )
+        self.btn_voz.pack(side="left", padx=(0, 8))
+        
+        # Indicador de grabación (invisible inicialmente)
+        self.recording_indicator = ctk.CTkLabel(
+            buttons_frame,
+            text="●",
+            font=("Segoe UI", 12),
+            text_color=self.COLORS["error"],
+            width=8
+        )
+        self.recording_indicator.pack(side="left", padx=(0, 0))
+        self.recording_indicator.pack_forget()  # Oculto inicialmente
+        
+        # NUEVO: Visualizador de voz (canvas para ondas animadas)
+        self.visualizer_frame = ctk.CTkFrame(
             input_container,
-            text="🚀",
-            width=45,
-            height=45,
+            fg_color=self.COLORS["bg_secondary"],
+            corner_radius=12,
+            height=60
+        )
+        self.visualizer_frame.pack(side="left", fill="x", expand=True, padx=(8, 0), pady=6)
+        self.visualizer_frame.pack_forget()  # Oculto inicialmente
+        
+        # Canvas para dibujar ondas
+        self.visualizer_canvas = ctk.CTkCanvas(
+            self.visualizer_frame,
+            bg=self.COLORS["bg_secondary"],
+            highlightthickness=0,
+            height=50
+        )
+        self.visualizer_canvas.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Botón Enviar moderno
+        self.btn_send = ctk.CTkButton(
+            buttons_frame,
+            text="Enviar",
+            width=70,
+            height=40,
             command=self.enviar,
-            font=("Segoe UI Emoji", 20),
+            font=("Segoe UI", 11, "bold"),
             fg_color=self.COLORS["accent"],
             hover_color=self.COLORS["accent_hover"],
-            corner_radius=20,     # Ligeramente diferente para estilo
-            text_color="white"
+            corner_radius=12,
+            text_color="white",
+            border_width=0
         )
-        self.btn_send.pack(side="right", padx=(0, 5), pady=5)
+        self.btn_send.pack(side="left")
         
         # Etiqueta de estado eliminada para ganar espacio (ya está en el header)
 
@@ -257,13 +342,13 @@ class SaraUltimateGUI(ctk.CTk):
         )
         card.pack(fill="x", padx=10, pady=10) # fill=x para que use el ancho disponible
         
-        # Título dentro de la tarjeta
+        # Título dentro de la tarjeta (más compacto)
         ctk.CTkLabel(
             card,
             text="⚙️ AJUSTES DE INTELIGENCIA",
-            font=("Inter", 14, "bold"),
+            font=("Inter", 13, "bold"),
             text_color=self.COLORS["accent"]
-        ).pack(pady=(20, 25))
+        ).pack(pady=(15, 20))
         
         # Contenedor de Formulario (Margenes internos)
         form_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -295,29 +380,29 @@ class SaraUltimateGUI(ctk.CTk):
         self.e_groq = self._crear_input_estilizado(form_frame, "GROQ CLOUD KEY", conf.get("groq_key"))
         self.e_open = self._crear_input_estilizado(form_frame, "OPENAI API KEY", conf.get("openai_key"))
 
-        # Botón guardar
+        # Botón guardar (más compacto)
         ctk.CTkButton(
             card,
             text="GUARDAR CAMBIOS",
             command=self.guardar_config,
-            height=50,
-            font=("Inter", 12, "bold"),
+            height=44,
+            font=("Inter", 11, "bold"),
             fg_color=self.COLORS["success"],
-            hover_color="#00C853",
-            corner_radius=15
-        ).pack(fill="x", padx=25, pady=(30, 10))
+            hover_color="#059669",
+            corner_radius=12
+        ).pack(fill="x", padx=25, pady=(20, 8))
         
-        # Botón Mi Perfil
+        # Botón Mi Perfil (más compacto)
         ctk.CTkButton(
             card,
             text="👤 MI PERFIL",
             command=self.open_profile_settings,
-            height=50,
-            font=("Inter", 12, "bold"),
+            height=44,
+            font=("Inter", 11, "bold"),
             fg_color=self.COLORS["secondary"],
-            hover_color="#6A3DE8",
-            corner_radius=15
-        ).pack(fill="x", padx=25, pady=(0, 30))
+            hover_color="#7C3AED",
+            corner_radius=12
+        ).pack(fill="x", padx=25, pady=(0, 20))
 
     def _crear_label_input(self, parent, text):
         ctk.CTkLabel(
@@ -350,11 +435,22 @@ class SaraUltimateGUI(ctk.CTk):
 
     def setup_dev_tab(self):
         # Título más elegante
-        ctk.CTkLabel(self.tab_dev, text="PANEL DE CONTROL", font=("Roboto", 14, "bold"), text_color="#bdc3c7").pack(pady=(10, 5))
-        ctk.CTkLabel(self.tab_dev, text="Herramientas de Desarrollo y Sistema", font=("Roboto", 10), text_color="#7f8c8d").pack(pady=(0, 15))
+        header = ctk.CTkFrame(self.tab_dev, fg_color="transparent")
+        header.pack(fill="x", pady=(10, 5))
+        
+        ctk.CTkLabel(header, text="PANEL DE CONTROL", font=("Roboto", 14, "bold"), text_color="#bdc3c7").pack()
+        ctk.CTkLabel(header, text="Herramientas de Desarrollo y Sistema", font=("Roboto", 10), text_color="#7f8c8d").pack()
 
-        btn_frame = ctk.CTkFrame(self.tab_dev, fg_color="transparent")
-        btn_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        # NUEVO: Frame scrollable para que todos los botones sean visibles
+        scrollable_frame = ctk.CTkScrollableFrame(
+            self.tab_dev,
+            fg_color="transparent",
+            scrollbar_button_color=self.COLORS["bg_hover"]
+        )
+        scrollable_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        
+        btn_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
+        btn_frame.pack(fill="both", expand=True)
         
         # Paleta "Premium Dark" - Unificada para look profesional
         # Formato: (Emoji, Título, Comando)
@@ -364,11 +460,17 @@ class SaraUltimateGUI(ctk.CTk):
             ("🌐", "Túnel Web", "compartir proyecto"),
             ("📟", "Monitor CPU", "sistema"),
             ("🧪", "Build / Deps", "instalar dependencias"),
-            ("💀", "Kill Python", "matar python")
+            ("💀", "Kill Python", "matar python"),
+            ("🎮", "Control Gestos", "activa gestos")  # NUEVO
         ]
         
+        # Configurar grid con más filas para que todos los botones sean visibles
         btn_frame.grid_columnconfigure(0, weight=1)
         btn_frame.grid_columnconfigure(1, weight=1)
+        btn_frame.grid_rowconfigure(0, weight=1)
+        btn_frame.grid_rowconfigure(1, weight=1)
+        btn_frame.grid_rowconfigure(2, weight=1)
+        btn_frame.grid_rowconfigure(3, weight=1)  # Fila extra para el botón de gestos
         
         for i, btn in enumerate(botones_config):
             icon, title, cmd = btn
@@ -388,8 +490,8 @@ class SaraUltimateGUI(ctk.CTk):
                 corner_radius=8,
                 anchor="w" # Alinear texto a la izquierda para look más limpio
             )
-            # Layout de 2 columnas
-            b.grid(row=i//2, column=i%2, padx=6, pady=6, sticky="nsew")
+            # Layout de 2 columnas con más espacio vertical
+            b.grid(row=i//2, column=i%2, padx=6, pady=8, sticky="nsew")
     
     def setup_network_tab(self):
         """Pestaña de Network Guardian Dashboard"""
@@ -674,10 +776,10 @@ class SaraUltimateGUI(ctk.CTk):
     def actualizar_estado_global(self):
         """Actualiza el indicador de estado en el header"""
         if self.brain.ia_online:
-            estado = f"🟢 Online | {self.brain.preferred_provider}"
+            estado = f"● {self.brain.preferred_provider}"
             color = self.COLORS["success"]
         else:
-            estado = "🔴 Offline"
+            estado = "● OFFLINE"
             color = self.COLORS["error"]
         
         self.header_status.configure(text=estado, text_color=color)
@@ -690,6 +792,26 @@ class SaraUltimateGUI(ctk.CTk):
         #         text_color=self.COLORS["success"] if self.brain.ia_online else self.COLORS["text_disabled"]
         #     )
 
+    def insert_markdown(self, text, base_tag):
+        """Inserta texto parseando negritas **text**"""
+        try:
+            parts = text.split("**")
+            for i, part in enumerate(parts):
+                if not part: continue
+                
+                # Pares = Normal, Impares = Negrita
+                # Combinamos el tag base (color) con 'bold' si aplica
+                if i % 2 == 1:
+                    # Nota: CTkTextbox acepta tags como tupla? Probemos string space-separated si falla tupla
+                    # Tkinter standard usa tupla.
+                    self.chat.insert("end", part, (base_tag, "bold"))
+                else:
+                    self.chat.insert("end", part, base_tag)
+            self.chat.insert("end", "\n")
+        except Exception as e:
+            # Fallback por seguridad
+            self.chat.insert("end", f"{text}\n", base_tag)
+
     def animar_texto(self, user, text, tag="sys"):
         """Simula efecto de escritura tipo hacker/IA."""
         ts = datetime.datetime.now().strftime("%H:%M")
@@ -698,8 +820,8 @@ class SaraUltimateGUI(ctk.CTk):
         self.chat.configure(state="normal")
         self.chat.insert("end", header, tag)
         
-        # Insertar texto completo (sin animación para mejor rendimiento)
-        self.chat.insert("end", f"{text}\n", tag)
+        # Usar el renderizador markdown
+        self.insert_markdown(text, tag)
         
         self.chat.see("end")
         self.chat.configure(state="disabled")
@@ -710,17 +832,46 @@ class SaraUltimateGUI(ctk.CTk):
 
     def _log_impl(self, user, text, tag="sys"):
         # Usar animación solo para mensajes de SARA importantes
-        if user == "SARA" and len(text) < 150:
+        if user == "SARA" and len(text) < 300: # Aumenté límite para el clima
             self.animar_texto(user, text, tag)
         else:
-            # Renderizado instantáneo para logs largos o del sistema
+            # Renderizado instantáneo
             try:
                 self.chat.configure(state="normal")
                 ts = datetime.datetime.now().strftime("%H:%M")
-                self.chat.insert("end", f"[{ts}] {user}: {text}\n", tag)
+                
+                # Header
+                self.chat.insert("end", f"[{ts}] {user}: ", tag)
+                
+                # Body con markdown
+                self.insert_markdown(text, tag)
+                
                 self.chat.see("end")
                 self.chat.configure(state="disabled")
-            except: pass # Evitar error si se intenta loguear con ventana destruida
+            except: pass
+
+    def seleccionar_archivo(self):
+        """Abre un diálogo para seleccionar PDF y lo procesa automáticamente"""
+        from tkinter import filedialog
+        
+        archivo = filedialog.askopenfilename(
+            title="Selecciona un PDF para estudiar",
+            filetypes=[
+                ("Archivos PDF", "*.pdf"),
+                ("Todos los archivos", "*.*")
+            ]
+        )
+        
+        if archivo:
+            # Mostrar archivo seleccionado
+            nombre_archivo = archivo.split("/")[-1].split("\\")[-1]
+            self.log("TU", f"📎 Archivo: {nombre_archivo}", "tu")
+            
+            # Preguntar qué hacer con el archivo
+            self.log("SARA", "¿Qué quieres hacer con este PDF?\n1️⃣ Resumir\n2️⃣ Crear flashcards\n3️⃣ Generar examen", "sara")
+            
+            # Guardar ruta temporalmente
+            self.archivo_temporal = archivo
 
     def enviar(self, event=None):
         txt = self.entry.get()
@@ -762,6 +913,24 @@ class SaraUltimateGUI(ctk.CTk):
                     self.brain.voz.hablar(mensaje)
                     return
             
+            # --- MANEJO DE MODO CENTINELA ---
+            if origen == "sentinel_on":
+                self.after(0, self.activate_sentinel)
+                self.log("SARA", resp, "sara")
+                return
+            elif origen == "sentinel_off":
+                self.after(0, self.deactivate_sentinel)
+                self.log("SARA", resp, "sara")
+                return
+
+            # --- MANEJO DE MODO ESTUDIO ---
+            if origen == "study":
+                # Mostrar botón de archivo cuando se activa modo estudio
+                if "Modo Estudio Activado" in resp:
+                    # Thread-safe UI update
+                    self.after(0, lambda: self.btn_file.pack(side="left", padx=(0, 8)))
+                    self.log("SYS", "💡 Usa el botón 📎 para adjuntar PDFs", "sys")
+            
             self.log("SARA", resp, "sara")
             
             # Hablar respuesta (solo si no es muy larga o es local)
@@ -773,17 +942,56 @@ class SaraUltimateGUI(ctk.CTk):
                 self.log("SYS", "Apagando sistema en 3 segundos...", "sys")
                 self.after(3000, self.destroy)
 
-            self.actualizar_estado_global()
+            self.after(0, self.actualizar_estado_global)
         except Exception as e:
             self.log("ERROR", str(e), "error")
 
     def toggle_mic(self):
-        self.is_listening = not self.is_listening
-        if self.is_listening:
-            self.btn_voz.configure(text="⏹️", fg_color=self.COLORS["error"])
-            threading.Thread(target=self.loop_voz, daemon=True).start()
-        else:
-            self.btn_voz.configure(text="�️", fg_color=self.COLORS["bg_elevated"])
+        try:
+            self.is_listening = not self.is_listening
+            if self.is_listening:
+                # Activar grabación
+                self.btn_voz.configure(
+                    text="⏹",
+                    fg_color=self.COLORS["error"],
+                    hover_color="#DC2626"
+                )
+                # Mostrar indicador de grabación (dot rojo)
+                if hasattr(self, 'recording_indicator'):
+                    self.recording_indicator.pack(side="left", padx=(0, 8))
+                
+                # NUEVO: Iniciar visualizador en modo listening
+                self.start_visualizer(mode="listening")
+                
+                # Iniciar loop de voz
+                threading.Thread(target=self.loop_voz, daemon=True).start()
+                self.log("SYS", "🎤 Micrófono activado", "sys")
+            else:
+                # Desactivar grabación
+                self.btn_voz.configure(
+                    text="🎤",
+                    fg_color=self.COLORS["bg_elevated"],
+                    hover_color=self.COLORS["secondary"]
+                )
+                # Ocultar indicador
+                if hasattr(self, "recording_indicator"):
+                    self.recording_indicator.pack_forget()
+                
+                # NUEVO: Detener visualizador
+                self.stop_visualizer()
+                
+                self.log("SYS", "🔇 Micrófono desactivado", "sys")
+        except Exception as e:
+            logging.error(f"Error en toggle_mic: {e}")
+            self.is_listening = False
+            self.btn_voz.configure(
+                text="🎤",
+                fg_color=self.COLORS["bg_elevated"]
+            )
+            if hasattr(self, "recording_indicator"):
+                self.recording_indicator.pack_forget()
+            # Detener visualizador en caso de error
+            self.stop_visualizer()
             
     def loop_voz(self):
         try:
@@ -831,7 +1039,12 @@ class SaraUltimateGUI(ctk.CTk):
                         # Comando para desactivar modo continuo
                         if "modo discontinuo" in txt and "sara" in txt:
                             self.is_listening = False
-                            self.btn_voz.configure(text="🎤", fg_color=self.COLORS["secondary"])
+                            self.btn_voz.configure(
+                                text="🎤", 
+                                fg_color=self.COLORS["bg_elevated"],
+                                hover_color=self.COLORS["secondary"]
+                            )
+                            self.recording_indicator.pack_forget()
                             self.log("SARA", "Modo discontinuo activado. Presiona el botón para volver a escuchar.", "sara")
                             self.brain.voz.hablar("Modo discontinuo activado")
                             break
@@ -866,17 +1079,45 @@ class SaraUltimateGUI(ctk.CTk):
                                 print("DEBUG: Contexto activo (Ciudad) - Wake Word no requerida")
                                 contexto_activo = True
 
-                        # Lista ampliada de variantes
-                        variantes_sara = ["sara", "zara", "sarah", "sahara", "zrah", "ara", "shara"]
+                        # Lista AMPLIADA de variantes de wake words
+                        variantes_sara = [
+                            "sara", "zara", "sarah", "sahara", "zrah", "ara", "shara",
+                            "sarra", "zarah", "sarita", "hey sara", "oye sara", "ok sara"
+                        ]
+                        
+                        # FUZZY MATCHING: Detectar wake word con tolerancia a errores
+                        wake_word_detectada = False
+                        palabra_detectada = None
+                        
+
+                        
+                        # Primero intentar coincidencia exacta (más rápido)
+                        if any(w in txt for w in variantes_sara):
+                            wake_word_detectada = True
+                            palabra_detectada = next(w for w in variantes_sara if w in txt)
+                        else:
+                            # Si no hay coincidencia exacta, usar fuzzy matching
+                            palabras_txt = txt.split()
+                            for palabra in palabras_txt:
+                                # Buscar similitud con variantes (umbral 0.75 = 75% similar)
+                                matches = difflib.get_close_matches(palabra, variantes_sara, n=1, cutoff=0.75)
+                                if matches:
+                                    wake_word_detectada = True
+                                    palabra_detectada = matches[0]
+                                    print(f"DEBUG: Fuzzy match: '{palabra}' -> '{matches[0]}'")
+                                    break
                         
                         # Detectar palabra clave O contexto activo
-                        if contexto_activo or any(w in txt for w in variantes_sara):
+                        if contexto_activo or wake_word_detectada:
                             if not contexto_activo: 
-                                print("DEBUG: WAKE WORD DETECTADA!")
-                                # Feedback auditivo
+                                print(f"DEBUG: WAKE WORD DETECTADA! ({palabra_detectada})")
+                                # Feedback auditivo mejorado (beep más agradable)
                                 try:
                                     import winsound
-                                    winsound.Beep(800, 100)
+                                    # Beep doble para confirmar detección
+                                    winsound.Beep(800, 80)  # Primera nota
+                                    time.sleep(0.05)
+                                    winsound.Beep(1000, 80)  # Segunda nota (más alta)
                                 except: pass
 
                             # Limpiar el comando
@@ -900,6 +1141,9 @@ class SaraUltimateGUI(ctk.CTk):
                             print("DEBUG: Ignorado por falta de wake word")
                         # Si no detecta "SARA", ignorar (no procesar)
                         
+                    except sr.WaitTimeoutError:
+                        # Timeout esperando que empiece a hablar - Ignorar silenciosamente
+                        pass
                     except sr.UnknownValueError:
                         # Ruido ambiental o voz no reconocida - Ignorar silenciosamente
                         pass
@@ -913,8 +1157,159 @@ class SaraUltimateGUI(ctk.CTk):
             logging.error(f"Error microfono: {e}")
             self.is_listening = False
             try: 
-                self.btn_voz.configure(text="🎤", fg_color=self.COLORS["secondary"])
+                self.btn_voz.configure(
+                    text="🎤", 
+                    fg_color=self.COLORS["bg_elevated"],
+                    hover_color=self.COLORS["secondary"]
+                )
+                if hasattr(self, 'recording_indicator'):
+                    self.recording_indicator.pack_forget()
             except: pass
+
+    # --- VISUALIZADOR DE VOZ (ONDAS ANIMADAS) ---
+    def start_visualizer(self, mode="listening"):
+        """Inicia el visualizador de voz
+        
+        Args:
+            mode: 'listening' (ondas azules) o 'speaking' (ondas verdes)
+        """
+        if not hasattr(self, 'visualizer_canvas'):
+            return
+        
+        self.visualizer_running = True
+        self.visualizer_mode = mode
+        
+        # Mostrar visualizador
+        self.entry.pack_forget()
+        self.visualizer_frame.pack(side="left", fill="x", expand=True, padx=(8, 0), pady=6)
+        
+        # Iniciar animación en thread separado
+        threading.Thread(target=self._animate_visualizer, daemon=True).start()
+    
+    def stop_visualizer(self):
+        """Detiene el visualizador de voz"""
+        self.visualizer_running = False
+        
+        # Ocultar visualizador y mostrar entry
+        if hasattr(self, 'visualizer_frame'):
+            self.visualizer_frame.pack_forget()
+        if hasattr(self, 'entry'):
+            self.entry.pack(side="left", fill="x", expand=True, padx=12, pady=6)
+    
+    def _animate_visualizer(self):
+        """Captura audio en tiempo real y anima las ondas"""
+        try:
+            # Inicializar PyAudio
+            p = pyaudio.PyAudio()
+            
+            # Configuración de audio
+            CHUNK = 1024
+            FORMAT = pyaudio.paInt16
+            CHANNELS = 1
+            RATE = 44100
+            
+            # Abrir stream de audio
+            self.audio_stream = p.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                frames_per_buffer=CHUNK
+            )
+            
+            while self.visualizer_running:
+                try:
+                    # Leer datos de audio
+                    data = self.audio_stream.read(CHUNK, exception_on_overflow=False)
+                    
+                    # Convertir bytes a valores numéricos
+                    values = struct.unpack(str(CHUNK) + 'h', data)
+                    
+                    # Calcular amplitud (RMS - Root Mean Square)
+                    rms = sum(v**2 for v in values) / len(values)
+                    amplitude = math.sqrt(rms)
+                    
+                    # Normalizar a 0-100 (AJUSTADO: divisor reducido para mayor sensibilidad)
+                    self.audio_level = min(100, amplitude / 30)  # Antes: 100, Ahora: 30 (3x más sensible)
+                    
+                    # Actualizar visualizador
+                    self.after(0, self._draw_waves)
+                    
+                    time.sleep(0.01)  # ~100 FPS para captura suave
+                except Exception as e:
+                    logging.error(f"Error capturando audio: {e}")
+                    break
+        
+        except Exception as e:
+            logging.error(f"Error inicializando audio stream: {e}")
+        finally:
+            # Limpiar
+            if self.audio_stream:
+                self.audio_stream.stop_stream()
+                self.audio_stream.close()
+            p.terminate()
+    
+    def _draw_waves(self):
+        """Dibuja las ondas basadas en el nivel de audio REAL"""
+        if not hasattr(self, 'visualizer_canvas'):
+            return
+        
+        try:
+            # Limpiar canvas
+            self.visualizer_canvas.delete("all")
+            
+            # Obtener dimensiones
+            width = self.visualizer_canvas.winfo_width()
+            height = self.visualizer_canvas.winfo_height()
+            
+            if width <= 1 or height <= 1:
+                return
+            
+            center_y = height // 2
+            
+            # Color según modo
+            if self.visualizer_mode == "listening":
+                color = self.COLORS["accent"]  # Cyan
+            else:  # speaking
+                color = self.COLORS["success"]  # Verde
+            
+            # Amplitud basada en nivel de audio REAL
+            # audio_level va de 0 a 100
+            base_amplitude = max(5, self.audio_level * 0.6)  # Antes: 0.3, Ahora: 0.6 (2x más visible)
+            
+            # Dibujar barras verticales (estilo ecualizador)
+            num_bars = 40
+            bar_width = width // num_bars
+            
+            for i in range(num_bars):
+                x = i * bar_width
+                
+                # Variar altura de barras con efecto de onda
+                wave_effect = math.sin(i * 0.3 + time.time() * 3) * 0.5 + 0.5
+                bar_height = base_amplitude * (0.5 + wave_effect)
+                
+                # Dibujar barra
+                y1 = center_y - bar_height
+                y2 = center_y + bar_height
+                
+                # Opacidad basada en posición
+                if i % 2 == 0:
+                    self.visualizer_canvas.create_rectangle(
+                        x, y1, x + bar_width - 2, y2,
+                        fill=color,
+                        outline=""
+                    )
+            
+            # Dibujar línea central si hay poco audio
+            if self.audio_level < 5:
+                self.visualizer_canvas.create_line(
+                    0, center_y, width, center_y,
+                    fill=color,
+                    width=2
+                )
+        
+        except Exception as e:
+            logging.error(f"Error dibujando visualizador: {e}")
 
     # --- SYSTEM TRAY (MODO FANTASMA) ---
     def setup_tray(self):
@@ -951,11 +1346,54 @@ class SaraUltimateGUI(ctk.CTk):
         self.brain.voz.hablar("Minimizando a segundo plano.")
         self.log("SYS", "Minimizado al System Tray", "sys")
 
-    # --- SENTINELA MODE REMOVED ---
+    # --- MODULO CENTINELA (LOCK SCREEN) ---
+    # --- MODULO CENTINELA (LOCK SCREEN) ---
+    def activate_sentinel(self):
+        """Activa la pantalla de bloqueo (Modo Centinela)."""
+        try:
+            # Lazy import del nuevo módulo UI con visualizador de espectro
+            from sentinel_ui import SentinelProGUI
+            
+            if not hasattr(self, "sentinel_ui_manager") or not self.sentinel_ui_manager:
+                self.sentinel_ui_manager = SentinelProGUI(self, self._on_sentinel_unlock)
+            
+            self.sentinel_ui_manager.activate()
+        except Exception as e:
+            logging.error(f"❌ Error activando Sentinel: {e}")
+            import traceback
+            traceback.print_exc()
+            self.log("ERROR", f"No pude activar el Modo Centinela: {str(e)}", "error")
+            self.brain.voz.hablar("Error al activar el modo centinela")
+
+    def deactivate_sentinel(self):
+        """Desactiva la pantalla de bloqueo."""
+        try:
+            if hasattr(self, "sentinel_ui_manager") and self.sentinel_ui_manager:
+                self.sentinel_ui_manager.deactivate()
+        except Exception as e:
+            logging.error(f"❌ Error desactivando Sentinel: {e}")
+            self.log("ERROR", f"Error al desactivar Sentinel: {str(e)}", "error")
+
+    def _on_sentinel_unlock(self, success, message):
+        """Callback al intentar desbloquear."""
+        if success:
+            self.log("SARA", f"🔓 {message}", "sara")
+            self.brain.voz.hablar(message)
+        else:
+            # Feedback solo verbal para error
+            self.brain.voz.hablar("Acceso denegado.")
+
+
 
 
 if __name__ == "__main__":
-    app = SaraUltimateGUI()
-    app.setup_tray() # Iniciar Icono
-    app.protocol("WM_DELETE_WINDOW", app.on_closing) # Interceptar botón X
-    app.mainloop() 
+    try:
+        app = SaraUltimateGUI()
+        app.setup_tray() # Iniciar Icono
+        app.protocol("WM_DELETE_WINDOW", app.on_closing) # Interceptar botón X
+        app.mainloop()
+    except Exception as e:
+        logging.error(f"❌ Error crítico al iniciar SARA: {e}")
+        import traceback
+        traceback.print_exc()
+        input("Presiona Enter para cerrar...") 
